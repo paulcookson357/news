@@ -1,0 +1,289 @@
+import { findMatchingPoolArticles, parseRssOrAtomXml } from './aggregator';
+import { extractArticleText } from './article-extractor';
+import {
+  extractBingTargetUrl,
+  getReputableMeta,
+  isFactualNewsUrl,
+} from './sources';
+import { getCachedDeepDive, saveDeepDive } from './storage';
+import { synthesizeBroadsheetReport, type SourceMaterial } from './synthesizer';
+import {
+  buildSearchQueries,
+  cleanHeadline,
+  cleanPromoText,
+  computeSimilarity,
+  extractKeywords,
+} from './text-utils';
+import type {
+  DeepDiveArticle,
+  SourceMeta,
+  StoryCategory,
+  StorySource,
+} from './types';
+
+export interface DeepDiveInput {
+  id: string;
+  title: string;
+  summary: string;
+  section: StoryCategory;
+  publishedAt: string;
+  sources: StorySource[];
+}
+
+interface SearchCandidate {
+  meta: SourceMeta;
+  title: string;
+  url: string;
+  publishedAt: string;
+  snippet: string;
+  relevance: number;
+}
+
+const SCOPED_SITES =
+  'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org';
+
+async function searchRssEndpoint(
+  url: string,
+  isBing: boolean
+): Promise<Array<{ title: string; url: string; publishedAt: string; snippet: string }>> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'application/rss+xml, application/xml, text/xml, */*',
+      },
+      signal: AbortSignal.timeout(5500),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const entries = parseRssOrAtomXml(xml);
+
+    return entries.slice(0, 14).map((entry) => ({
+      title: cleanHeadline(entry.title),
+      url: isBing ? extractBingTargetUrl(entry.link) : entry.link,
+      publishedAt: entry.publishedAt,
+      snippet: cleanPromoText(entry.description),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function buildDeepDiveReport(
+  input: DeepDiveInput,
+  forceRefresh = false
+): Promise<DeepDiveArticle> {
+  if (!forceRefresh) {
+    const cached = getCachedDeepDive(input.id);
+    if (cached) return cached;
+  }
+
+  const queries = buildSearchQueries(input.title);
+  const primaryQuery = queries[0] ?? input.title;
+  const compactQuery = queries[1] ?? primaryQuery;
+
+  const bingGeneralUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
+    primaryQuery
+  )}&format=rss`;
+  const bingScopedUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
+    `(${SCOPED_SITES}) ${compactQuery}`
+  )}&format=rss`;
+  const googleNewsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+    `${compactQuery} when:7d`
+  )}&hl=en-GB&gl=GB&ceid=GB:en`;
+
+  // Execute live second internet search across multiple free news indices in parallel
+  const [bingGeneralHits, bingScopedHits, googleHits] = await Promise.all([
+    searchRssEndpoint(bingGeneralUrl, true),
+    searchRssEndpoint(bingScopedUrl, true),
+    searchRssEndpoint(googleNewsUrl, false),
+  ]);
+
+  const storyKeywords = extractKeywords(`${input.title} ${input.summary}`);
+  const candidateMap = new Map<string, SearchCandidate>();
+
+  const registerCandidate = (
+    meta: SourceMeta,
+    title: string,
+    url: string,
+    publishedAt: string,
+    snippet: string,
+    baseBoost = 0
+  ) => {
+    if (!url || !title || !isFactualNewsUrl(url, title)) return;
+
+    const itemKw = extractKeywords(`${title} ${snippet.slice(0, 120)}`);
+    const sim = computeSimilarity(
+      storyKeywords.tokens,
+      storyKeywords.properNouns,
+      itemKw.tokens,
+      itemKw.properNouns
+    );
+
+    if (baseBoost === 0 && sim < 0.18) return;
+
+    const existing = candidateMap.get(meta.name);
+    const totalScore = sim + baseBoost;
+    // Prefer direct reputable URLs over Google News proxy redirects when available
+    const isGoogleWrapper = url.includes('news.google.com');
+    const existingIsWrapper = existing?.url.includes('news.google.com') ?? false;
+
+    if (
+      !existing ||
+      (existingIsWrapper && !isGoogleWrapper) ||
+      (existingIsWrapper === isGoogleWrapper && totalScore > existing.relevance)
+    ) {
+      candidateMap.set(meta.name, {
+        meta,
+        title,
+        url,
+        publishedAt,
+        snippet,
+        relevance: totalScore,
+      });
+    }
+  };
+
+  // 1. Seed with the story's original front-page sources
+  for (const src of input.sources) {
+    registerCandidate(
+      {
+        name: src.name,
+        domain: src.domain,
+        region: src.region,
+        type: src.type,
+      },
+      src.title,
+      src.url,
+      src.publishedAt,
+      src.snippet ?? input.summary,
+      1.0
+    );
+  }
+
+  // 2. Add cross-matched articles from our live RSS edition pool
+  const existingUrls = new Set(input.sources.map((s) => s.url));
+  const poolMatches = findMatchingPoolArticles(input.title, existingUrls);
+  for (const item of poolMatches) {
+    registerCandidate(
+      {
+        name: item.name,
+        domain: item.domain,
+        region: item.region,
+        type: item.type,
+      },
+      item.title,
+      item.url,
+      item.publishedAt,
+      item.snippet,
+      0.35
+    );
+  }
+
+  // 3. Process live Bing News RSS hits (reputable domains only)
+  for (const hit of [...bingScopedHits, ...bingGeneralHits]) {
+    const meta = getReputableMeta(hit.url);
+    if (!meta) continue;
+    registerCandidate(meta, hit.title, hit.url, hit.publishedAt, hit.snippet);
+  }
+
+  // 4. Process live Google News hits if publisher suffix matches a reputable outlet
+  for (const hit of googleHits) {
+    const match = hit.snippet.match(
+      /(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|Euronews|CBC News)/i
+    );
+    if (!match) continue;
+    const matchedName = match[1];
+    // Only add if we don't already have that publisher with a direct URL
+    const alreadyPresent = Array.from(candidateMap.keys()).some((k) =>
+      k.toLowerCase().includes(matchedName.toLowerCase().replace(/^the\s+/, ''))
+    );
+    if (alreadyPresent) continue;
+
+    const syntheticMeta: SourceMeta = {
+      name: matchedName === 'DW' ? 'Deutsche Welle' : matchedName,
+      domain: 'news.google.com',
+      region: 'International',
+      type: 'Verified Publisher',
+    };
+    registerCandidate(
+      syntheticMeta,
+      hit.title,
+      hit.url,
+      hit.publishedAt,
+      hit.snippet
+    );
+  }
+
+  // Select up to 6 distinct publishers, prioritizing regional & editorial balance
+  const selectedCandidates = Array.from(candidateMap.values())
+    .sort((a, b) => b.relevance - a.relevance)
+    .slice(0, 6);
+
+  // Extract full article text in parallel across selected reputable URLs
+  const materials: SourceMaterial[] = await Promise.all(
+    selectedCandidates.map(async (candidate) => {
+      const isDirectReputable =
+        candidate.url && !candidate.url.includes('news.google.com');
+      const extracted = isDirectReputable
+        ? await extractArticleText(candidate.url)
+        : null;
+
+      if (extracted && extracted.paragraphs.length > 0) {
+        return {
+          meta: candidate.meta,
+          title: candidate.title,
+          url: candidate.url,
+          publishedAt: candidate.publishedAt,
+          paragraphs: extracted.paragraphs,
+          snippet: candidate.snippet,
+          wordCount: extracted.wordCount,
+          fetchStatus: 'extracted' as const,
+        };
+      }
+
+      const fallbackWords = candidate.snippet
+        ? candidate.snippet.split(/\s+/).filter(Boolean).length
+        : 0;
+
+      return {
+        meta: candidate.meta,
+        title: candidate.title,
+        url: candidate.url,
+        publishedAt: candidate.publishedAt,
+        paragraphs: [],
+        snippet: candidate.snippet || input.summary,
+        wordCount: fallbackWords,
+        fetchStatus: 'snippet' as const,
+      };
+    })
+  );
+
+  const { synthesis, sourceDetails } = await synthesizeBroadsheetReport(
+    input.title,
+    input.section,
+    input.summary,
+    materials
+  );
+
+  const article: DeepDiveArticle = {
+    id: input.id,
+    title: input.title,
+    section: input.section,
+    standfirst: synthesis.standfirst,
+    keyFacts: synthesis.keyFacts,
+    sections: synthesis.sections,
+    sources: sourceDetails,
+    editorialNote: synthesis.editorialNote,
+    synthesisMode: synthesis.synthesisMode,
+    generatedAt: new Date().toISOString(),
+    searchQueriesUsed: [primaryQuery, compactQuery].filter(
+      (q, i, arr) => Boolean(q) && arr.indexOf(q) === i
+    ),
+  };
+
+  saveDeepDive(article);
+  return article;
+}
