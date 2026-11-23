@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildDeepDiveReport, type DeepDiveInput } from '@/lib/deep-dive';
-import { getCachedStoryById } from '@/lib/storage';
+import { loadStoryById } from '@/lib/storage';
 import type { StoryCategory, StorySource } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const cachedStory = getCachedStoryById(id);
+    const cachedStory = await loadStoryById(id);
 
     const input: DeepDiveInput | null =
       body.title && Array.isArray(body.sources) && body.sources.length > 0

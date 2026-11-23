@@ -1,13 +1,13 @@
 import { connection, NextResponse } from 'next/server';
 import { fetchLatestEdition } from '@/lib/aggregator';
-import { getCachedEdition } from '@/lib/storage';
+import { loadEdition } from '@/lib/storage';
 
 export const maxDuration = 60;
 
 export async function GET() {
   await connection();
   try {
-    const cached = getCachedEdition();
+    const cached = await loadEdition();
     if (cached && cached.stories.length > 0) {
       return NextResponse.json({ edition: cached });
     }

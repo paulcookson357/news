@@ -2,11 +2,11 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { FrontPageClient } from '@/components/FrontPageClient';
 import { fetchLatestEdition } from '@/lib/aggregator';
-import { getCachedEdition } from '@/lib/storage';
+import { loadEdition } from '@/lib/storage';
 
 async function LiveFrontPage() {
   await connection();
-  let edition = getCachedEdition();
+  let edition = await loadEdition();
   if (!edition || edition.stories.length === 0) {
     const result = await fetchLatestEdition();
     edition = result.edition;

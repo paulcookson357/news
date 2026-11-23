@@ -458,7 +458,7 @@ export async function fetchLatestEdition(
     newStoriesCount = curated.filter((s) => !previousIds.has(s.id)).length;
   }
 
-  saveEdition(edition, rawArticles);
+  await saveEdition(edition, rawArticles);
 
   return {
     edition,

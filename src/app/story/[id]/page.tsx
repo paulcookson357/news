@@ -1,7 +1,7 @@
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { StoryDeepDiveClient } from '@/components/StoryDeepDiveClient';
-import { getCachedDeepDive, getCachedStoryById } from '@/lib/storage';
+import { loadDeepDive, loadStoryById } from '@/lib/storage';
 
 async function StoryDeepDiveLoader({
   params,
@@ -11,8 +11,10 @@ async function StoryDeepDiveLoader({
   await connection();
   const { id } = await params;
   const decodedId = decodeURIComponent(id);
-  const initialStory = getCachedStoryById(decodedId);
-  const initialArticle = getCachedDeepDive(decodedId);
+  const [initialStory, initialArticle] = await Promise.all([
+    loadStoryById(decodedId),
+    loadDeepDive(decodedId),
+  ]);
 
   return (
     <StoryDeepDiveClient

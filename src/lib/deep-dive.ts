@@ -5,7 +5,7 @@ import {
   getReputableMeta,
   isFactualNewsUrl,
 } from './sources';
-import { getCachedDeepDive, saveDeepDive } from './storage';
+import { loadDeepDive, saveDeepDive } from './storage';
 import { synthesizeBroadsheetReport, type SourceMaterial } from './synthesizer';
 import {
   buildSearchQueries,
@@ -76,7 +76,7 @@ export async function buildDeepDiveReport(
   forceRefresh = false
 ): Promise<DeepDiveArticle> {
   if (!forceRefresh) {
-    const cached = getCachedDeepDive(input.id);
+    const cached = await loadDeepDive(input.id);
     if (cached) return cached;
   }
 
@@ -284,6 +284,6 @@ export async function buildDeepDiveReport(
     ),
   };
 
-  saveDeepDive(article);
+  await saveDeepDive(article);
   return article;
 }
