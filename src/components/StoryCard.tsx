@@ -2,12 +2,55 @@
 
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import { SECTION_LABELS } from '@/lib/sources';
 import type { StorySummary } from '@/lib/types';
 
 interface StoryCardProps {
   story: StorySummary;
   variant?: 'lead' | 'featured' | 'standard' | 'brief';
+  showImage?: boolean;
+}
+
+interface EditorialPhotoProps {
+  src?: string;
+  alt: string;
+  credit?: string;
+  priority?: boolean;
+  className?: string;
+}
+
+function EditorialPhoto({
+  src,
+  alt,
+  credit,
+  priority = false,
+  className = '',
+}: EditorialPhotoProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!src || failedSrc === src) return null;
+
+  return (
+    <figure className={className}>
+      <div className="aspect-[16/9] w-full overflow-hidden border border-[#D4CCC0] bg-[#EFEAE0]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSrc(src)}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.015]"
+        />
+      </div>
+      {credit && (
+        <figcaption className="mt-1.5 font-ui text-[10px] uppercase tracking-[0.08em] text-[#5C574F]">
+          Photo: {credit}
+        </figcaption>
+      )}
+    </figure>
+  );
 }
 
 export function formatStoryTime(iso: string): string {
@@ -36,9 +79,14 @@ export function persistStoryForDeepDive(story: StorySummary): void {
   }
 }
 
-export function StoryCard({ story, variant = 'standard' }: StoryCardProps) {
+export function StoryCard({
+  story,
+  variant = 'standard',
+  showImage = false,
+}: StoryCardProps) {
   const sourceNames = story.sources.map((s) => s.name);
   const multiSource = story.sources.length > 1;
+  const photoCredit = story.imageSource || story.primarySource;
 
   const handleClick = () => {
     persistStoryForDeepDive(story);
@@ -69,9 +117,26 @@ export function StoryCard({ story, variant = 'standard' }: StoryCardProps) {
             </h2>
           </Link>
 
-          <p className="mt-3.5 font-editorial text-base sm:text-[1.125rem] leading-[1.6] text-[#2C2925]">
-            {story.summary}
-          </p>
+          {showImage && story.imageUrl && (
+            <Link
+              href={`/story/${encodeURIComponent(story.id)}`}
+              onClick={handleClick}
+              className="mt-3.5 block"
+            >
+              <EditorialPhoto
+                src={story.imageUrl}
+                alt={story.title}
+                credit={photoCredit}
+                priority
+              />
+            </Link>
+          )}
+
+          {story.summary && (
+            <p className="mt-3.5 font-editorial text-base sm:text-[1.125rem] leading-[1.6] text-[#2C2925]">
+              {story.summary}
+            </p>
+          )}
         </div>
 
         <div className="mt-4 pt-3 border-t border-[#D4CCC0] flex flex-wrap items-center justify-between gap-2">
@@ -130,6 +195,20 @@ export function StoryCard({ story, variant = 'standard' }: StoryCardProps) {
   return (
     <article className="group flex h-full w-full flex-col justify-between">
       <div>
+        {showImage && story.imageUrl && (
+          <Link
+            href={`/story/${encodeURIComponent(story.id)}`}
+            onClick={handleClick}
+            className="mb-3 block"
+          >
+            <EditorialPhoto
+              src={story.imageUrl}
+              alt={story.title}
+              credit={photoCredit}
+            />
+          </Link>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 font-ui text-[10px] uppercase tracking-[0.12em]">
           <span className="font-semibold text-[#8B1E24]">
             {SECTION_LABELS[story.section]}

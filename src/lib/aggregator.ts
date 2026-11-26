@@ -31,7 +31,11 @@ const xmlParser = new XMLParser({
     name === 'item' ||
     name === 'entry' ||
     name === 'link' ||
-    name === 'category',
+    name === 'category' ||
+    name === 'media:content' ||
+    name === 'media:thumbnail' ||
+    name === 'media:group' ||
+    name === 'enclosure',
 });
 
 const MAX_AGE_MS = 72 * 60 * 60 * 1000;
@@ -41,6 +45,175 @@ interface ParsedFeedEntry {
   link: string;
   description: string;
   publishedAt: string;
+  imageUrl?: string;
+  imageWidth?: number;
+}
+
+function decodeImageEntities(rawUrl: string): string {
+  return rawUrl
+    .replace(/&amp;/gi, '&')
+    .replace(/&#38;/g, '&')
+    .trim();
+}
+
+export function isValidEditorialImageUrl(rawUrl: string, baseUrl?: string): boolean {
+  if (!rawUrl) return false;
+  const decoded = decodeImageEntities(rawUrl);
+  if (
+    /(logo|favicon|avatar|placeholder|default[-_]image|1x1|spacer|pixel|badge|sprite|brandmark)/i.test(
+      decoded
+    )
+  ) {
+    return false;
+  }
+  try {
+    const parsed = baseUrl ? new URL(decoded, baseUrl) : new URL(decoded);
+    if (parsed.protocol !== 'https:') return false;
+    const cleanPath = parsed.pathname.toLowerCase();
+    if (
+      cleanPath.endsWith('.svg') ||
+      cleanPath.endsWith('.ico') ||
+      cleanPath.endsWith('.gif')
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isLowResThumbnailUrl(url: string): boolean {
+  return /\/240\/|[?&](?:w|width)=240\b|\/w:240\//i.test(url);
+}
+
+interface ImageCandidate {
+  url: string;
+  width: number;
+  isThumbnail: boolean;
+}
+
+function normalizeImageUrl(rawUrl: string, baseUrl?: string): string | undefined {
+  const decoded = decodeImageEntities(rawUrl);
+  if (!isValidEditorialImageUrl(decoded, baseUrl)) return undefined;
+  try {
+    return (baseUrl ? new URL(decoded, baseUrl) : new URL(decoded)).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function collectMediaNodes(
+  nodes: unknown,
+  candidates: ImageCandidate[],
+  options: { isThumbnail?: boolean; checkImageType?: boolean } = {}
+): void {
+  const list = Array.isArray(nodes) ? nodes : nodes ? [nodes] : [];
+  for (const node of list) {
+    if (typeof node !== 'object' || node === null) continue;
+    const rec = node as Record<string, unknown>;
+    const rawUrl =
+      typeof rec['@_url'] === 'string'
+        ? rec['@_url']
+        : typeof rec['@_href'] === 'string'
+          ? rec['@_href']
+          : '';
+    if (!rawUrl) continue;
+
+    if (options.checkImageType) {
+      const mime = typeof rec['@_type'] === 'string' ? rec['@_type'].toLowerCase() : '';
+      const cleanPath = rawUrl.split('?')[0].toLowerCase();
+      const looksLikeImage =
+        mime.startsWith('image/') ||
+        cleanPath.endsWith('.jpg') ||
+        cleanPath.endsWith('.jpeg') ||
+        cleanPath.endsWith('.png') ||
+        cleanPath.endsWith('.webp');
+      if (!looksLikeImage) continue;
+    } else if (typeof rec['@_medium'] === 'string') {
+      const medium = rec['@_medium'].toLowerCase();
+      if (medium && medium !== 'image') continue;
+    }
+
+    const validUrl = normalizeImageUrl(rawUrl);
+    if (!validUrl) continue;
+
+    const widthRaw = rec['@_width'];
+    const parsedWidth =
+      typeof widthRaw === 'number'
+        ? widthRaw
+        : typeof widthRaw === 'string'
+          ? Number.parseInt(widthRaw, 10)
+          : 0;
+    const width = Number.isFinite(parsedWidth) && parsedWidth > 0 ? parsedWidth : 0;
+
+    candidates.push({
+      url: validUrl,
+      width,
+      isThumbnail: Boolean(options.isThumbnail),
+    });
+  }
+}
+
+function extractImageFromFeedItem(
+  rec: Record<string, unknown>,
+  htmlFields: string[]
+): { url?: string; width?: number } {
+  const candidates: ImageCandidate[] = [];
+
+  collectMediaNodes(rec['media:content'], candidates, { isThumbnail: false });
+
+  const mediaGroups = Array.isArray(rec['media:group'])
+    ? rec['media:group']
+    : rec['media:group']
+      ? [rec['media:group']]
+      : [];
+  for (const grp of mediaGroups) {
+    if (typeof grp === 'object' && grp !== null) {
+      const grpRec = grp as Record<string, unknown>;
+      collectMediaNodes(grpRec['media:content'], candidates, { isThumbnail: false });
+      collectMediaNodes(grpRec['media:thumbnail'], candidates, { isThumbnail: true });
+    }
+  }
+
+  collectMediaNodes(rec['media:thumbnail'], candidates, { isThumbnail: true });
+  collectMediaNodes(rec.enclosure, candidates, {
+    isThumbnail: false,
+    checkImageType: true,
+  });
+
+  for (const html of htmlFields) {
+    if (!html) continue;
+    const matches = html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi);
+    for (const m of matches) {
+      const validUrl = normalizeImageUrl(m[1]);
+      if (validUrl) {
+        candidates.push({ url: validUrl, width: 0, isThumbnail: false });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return {};
+
+  candidates.sort((a, b) => {
+    const aLow = isLowResThumbnailUrl(a.url) ? 1 : 0;
+    const bLow = isLowResThumbnailUrl(b.url) ? 1 : 0;
+    if (aLow !== bLow) return aLow - bLow;
+
+    const aHi = a.width >= 600 ? 1 : 0;
+    const bHi = b.width >= 600 ? 1 : 0;
+    if (aHi !== bHi) return bHi - aHi;
+
+    if (a.width !== b.width) return b.width - a.width;
+    if (a.isThumbnail !== b.isThumbnail) return a.isThumbnail ? 1 : -1;
+    return 0;
+  });
+
+  const best = candidates[0];
+  return {
+    url: best.url,
+    width: best.width > 0 ? best.width : undefined,
+  };
 }
 
 function extractEntryLink(rawLink: unknown): string {
@@ -102,21 +275,28 @@ export function parseRssOrAtomXml(xml: string): ParsedFeedEntry[] {
     const rec = item as Record<string, unknown>;
     const title = extractTextField(rec.title);
     const link = extractEntryLink(rec.link);
-    const description =
-      extractTextField(rec.description) ||
-      extractTextField(rec['content:encoded']) ||
-      extractTextField(rec.summary);
+    const contentEncoded = extractTextField(rec['content:encoded']);
+    const rawDescription = extractTextField(rec.description);
+    const rawSummary = extractTextField(rec.summary);
+    const description = rawDescription || contentEncoded || rawSummary;
     const pubDate =
       extractTextField(rec.pubDate) ||
       extractTextField(rec['dc:date']) ||
       extractTextField(rec.published);
 
     if (title && link) {
+      const img = extractImageFromFeedItem(rec, [
+        contentEncoded,
+        rawDescription,
+        rawSummary,
+      ]);
       results.push({
         title,
         link,
         description,
         publishedAt: safeIsoDate(pubDate),
+        imageUrl: img.url,
+        imageWidth: img.width,
       });
     }
   }
@@ -129,17 +309,21 @@ export function parseRssOrAtomXml(xml: string): ParsedFeedEntry[] {
       const rec = entry as Record<string, unknown>;
       const title = extractTextField(rec.title);
       const link = extractEntryLink(rec.link);
-      const description =
-        extractTextField(rec.summary) || extractTextField(rec.content);
+      const rawSummary = extractTextField(rec.summary);
+      const rawContent = extractTextField(rec.content);
+      const description = rawSummary || rawContent;
       const pubDate =
         extractTextField(rec.updated) || extractTextField(rec.published);
 
       if (title && link) {
+        const img = extractImageFromFeedItem(rec, [rawContent, rawSummary]);
         results.push({
           title,
           link,
           description,
           publishedAt: safeIsoDate(pubDate),
+          imageUrl: img.url,
+          imageWidth: img.width,
         });
       }
     }
@@ -217,6 +401,8 @@ async function fetchSingleFeed(feed: FeedConfig): Promise<RawArticle[]> {
       type: meta.type,
       tokens,
       properNouns,
+      imageUrl: entry.imageUrl,
+      imageWidth: entry.imageWidth,
     });
   }
 
@@ -340,6 +526,15 @@ function clusterArticles(articles: RawArticle[]): StorySummary[] {
       ? summarizeToConcise(primary.snippet, 250)
       : '';
 
+    const imageMembers = sortedMembers.filter((m) => Boolean(m.imageUrl));
+    imageMembers.sort((a, b) => {
+      const aLow = a.imageUrl && isLowResThumbnailUrl(a.imageUrl) ? 1 : 0;
+      const bLow = b.imageUrl && isLowResThumbnailUrl(b.imageUrl) ? 1 : 0;
+      if (aLow !== bLow) return aLow - bLow;
+      return (b.imageWidth ?? 0) - (a.imageWidth ?? 0);
+    });
+    const imageMember = imageMembers[0];
+
     summaries.push({
       id: makeStoryId(primary.title),
       title: primary.title,
@@ -349,6 +544,8 @@ function clusterArticles(articles: RawArticle[]): StorySummary[] {
       sources,
       primarySource: primary.name,
       score,
+      imageUrl: imageMember?.imageUrl,
+      imageSource: imageMember?.imageUrl ? imageMember.name : undefined,
     });
   }
 
@@ -418,6 +615,104 @@ export function formatEditionDate(date: Date): string {
   }).format(date);
 }
 
+const OG_META_KEYS = ['og:image:secure_url', 'og:image', 'twitter:image'];
+
+function extractMetaImageFromHtml(html: string, baseUrl: string): string | undefined {
+  for (const metaKey of OG_META_KEYS) {
+    const forward = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${metaKey}["'][^>]+content=["']([^"']+)["']`,
+      'i'
+    );
+    const reverse = new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${metaKey}["']`,
+      'i'
+    );
+    const rawMatch = html.match(forward)?.[1] ?? html.match(reverse)?.[1];
+    if (rawMatch) {
+      const normalized = normalizeImageUrl(rawMatch, baseUrl);
+      if (normalized) return normalized;
+    }
+  }
+  return undefined;
+}
+
+async function fetchOgImage(articleUrl: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(articleUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+      },
+      signal: AbortSignal.timeout(3000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return undefined;
+    const html = await res.text();
+    return extractMetaImageFromHtml(html, res.url || articleUrl);
+  } catch {
+    return undefined;
+  }
+}
+
+async function enrichFeaturedStoryImages(stories: StorySummary[]): Promise<void> {
+  if (stories.length === 0) return;
+
+  const categories: StoryCategory[] = [
+    'uk',
+    'world',
+    'business',
+    'tech',
+    'environment',
+  ];
+
+  // Mirror FrontPageClient's Option A photo slots so every featured slot gets a sharp image
+  const lead =
+    stories.find(
+      (s) =>
+        s.sources.length >= 2 && (s.section === 'uk' || s.section === 'world')
+    ) ?? stories[0];
+
+  const aboveFoldUsed = new Set<string>([lead.id]);
+  const remaining = stories.filter((s) => !aboveFoldUsed.has(s.id));
+  const leftTop = remaining[0];
+  remaining.slice(0, 7).forEach((s) => aboveFoldUsed.add(s.id));
+
+  const targetMap = new Map<string, StorySummary>();
+  targetMap.set(lead.id, lead);
+  if (leftTop) targetMap.set(leftTop.id, leftTop);
+
+  for (const cat of categories) {
+    const sectionFolioLead = stories.find(
+      (s) => s.section === cat && !aboveFoldUsed.has(s.id)
+    );
+    if (sectionFolioLead) targetMap.set(sectionFolioLead.id, sectionFolioLead);
+
+    const sectionTabLead = stories.find((s) => s.section === cat);
+    if (sectionTabLead) targetMap.set(sectionTabLead.id, sectionTabLead);
+  }
+
+  const candidates = Array.from(targetMap.values())
+    .filter((s) => !s.imageUrl || isLowResThumbnailUrl(s.imageUrl))
+    .slice(0, 10);
+
+  await Promise.allSettled(
+    candidates.map(async (story) => {
+      const directSources = story.sources.filter(
+        (src) => !src.url.includes('news.google.com')
+      );
+      for (const src of directSources.slice(0, 2)) {
+        const ogUrl = await fetchOgImage(src.url);
+        if (ogUrl) {
+          story.imageUrl = ogUrl;
+          story.imageSource = src.name;
+          break;
+        }
+      }
+    })
+  );
+}
+
 export async function fetchLatestEdition(
   previousIds?: Set<string>
 ): Promise<{ edition: Edition; stats: UpdateStats }> {
@@ -442,6 +737,7 @@ export async function fetchLatestEdition(
 
   const clustered = clusterArticles(rawArticles);
   const curated = curateBalancedEdition(clustered);
+  await enrichFeaturedStoryImages(curated);
 
   const now = new Date();
   const edition: Edition = {

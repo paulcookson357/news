@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { fetchLatestEdition } from '@/lib/aggregator';
 import { loadEdition } from '@/lib/storage';
@@ -9,6 +10,7 @@ export async function POST() {
     const previous = await loadEdition();
     const previousIds = new Set(previous?.stories.map((s) => s.id) ?? []);
     const { edition, stats } = await fetchLatestEdition(previousIds);
+    revalidatePath('/');
     return NextResponse.json({ edition, stats });
   } catch (error) {
     console.error('Failed to update news:', error);

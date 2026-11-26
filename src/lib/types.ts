@@ -24,6 +24,8 @@ export interface StorySummary {
   sources: StorySource[];
   primarySource: string;
   score: number;
+  imageUrl?: string;
+  imageSource?: string;
 }
 
 export interface RawArticle extends SourceMeta {
@@ -35,6 +37,8 @@ export interface RawArticle extends SourceMeta {
   section: StoryCategory;
   tokens: string[];
   properNouns: string[];
+  imageUrl?: string;
+  imageWidth?: number;
 }
 
 export interface Edition {

@@ -17,7 +17,7 @@ interface FrontPageClientProps {
   initialEdition: Edition;
 }
 
-const EDITION_STORAGE_KEY = 'meridian_edition_v1';
+const EDITION_STORAGE_KEY = 'meridian_edition_v2';
 const SECTION_ORDER: StoryCategory[] = [
   'uk',
   'world',
@@ -210,16 +210,20 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
               <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-[#D4CCC0]">
                 {/* Left Column: Secondary Headlines */}
                 <div className="lg:col-span-3 lg:pr-6 flex flex-col divide-y divide-[#D4CCC0] order-2 lg:order-1 pt-5 lg:pt-0 border-t lg:border-t-0 border-[#D4CCC0]">
-                  {leftColumn.map((story) => (
+                  {leftColumn.map((story, idx) => (
                     <div key={story.id} className="py-4 first:pt-0 last:pb-0">
-                      <StoryCard story={story} variant="featured" />
+                      <StoryCard
+                        story={story}
+                        variant="featured"
+                        showImage={idx === 0}
+                      />
                     </div>
                   ))}
                 </div>
 
                 {/* Center Column: Primary Lead Story + 2-Column Sub-Lead Grid */}
                 <div className="lg:col-span-6 lg:px-6 order-1 lg:order-2 pb-5 lg:pb-0">
-                  <StoryCard story={leadStory} variant="lead" />
+                  <StoryCard story={leadStory} variant="lead" showImage />
 
                   {centerSubStories.length > 0 && (
                     <div className="mt-5 pt-5 border-t border-[#D4CCC0] grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[#D4CCC0]">
@@ -302,7 +306,11 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                                 : 'md:pl-6'
                               }`}
                           >
-                            <StoryCard story={story} variant="standard" />
+                            <StoryCard
+                              story={story}
+                              variant="standard"
+                              showImage={rowIdx === 0 && colIdx === 0}
+                            />
                           </div>
                         ))}
                       </div>
@@ -332,7 +340,11 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                 {filteredStories.length >= 2 ? (
                   <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[#D4CCC0]">
                     <div className="lg:col-span-8 lg:pr-6 pb-6 lg:pb-0">
-                      <StoryCard story={filteredStories[0]} variant="lead" />
+                      <StoryCard
+                        story={filteredStories[0]}
+                        variant="lead"
+                        showImage
+                      />
                     </div>
                     <div className="lg:col-span-4 lg:pl-6 pt-6 lg:pt-0 flex">
                       <StoryCard
@@ -342,7 +354,11 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                     </div>
                   </div>
                 ) : (
-                  <StoryCard story={filteredStories[0]} variant="lead" />
+                  <StoryCard
+                    story={filteredStories[0]}
+                    variant="lead"
+                    showImage
+                  />
                 )}
               </div>
             )}

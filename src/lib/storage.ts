@@ -141,6 +141,8 @@ interface SupabaseStoryRow {
   primary_source: string;
   score: number;
   sources: StorySource[];
+  image_url?: string | null;
+  image_source?: string | null;
 }
 
 interface SupabaseDeepDiveRow {
@@ -167,6 +169,8 @@ function mapStoryRow(row: SupabaseStoryRow): StorySummary {
     primarySource: row.primary_source,
     score: row.score,
     sources: Array.isArray(row.sources) ? row.sources : [],
+    imageUrl: row.image_url ?? undefined,
+    imageSource: row.image_source ?? undefined,
   };
 }
 
@@ -217,7 +221,7 @@ export async function loadEdition(): Promise<Edition | null> {
             .map((id) => `"${id.replace(/"/g, '')}"`)
             .join(',');
           const storiesRes = await fetch(
-            `${cfg.url}/rest/v1/meridian_stories?select=id,title,summary,section,published_at,primary_source,score,sources&id=in.(${encodeURIComponent(
+            `${cfg.url}/rest/v1/meridian_stories?select=id,title,summary,section,published_at,primary_source,score,sources,image_url,image_source&id=in.(${encodeURIComponent(
               idFilter
             )})`,
             {
@@ -309,7 +313,7 @@ export async function loadStoryById(id: string): Promise<StorySummary | null> {
   if (cfg) {
     try {
       const res = await fetch(
-        `${cfg.url}/rest/v1/meridian_stories?select=id,title,summary,section,published_at,primary_source,score,sources&id=eq.${encodeURIComponent(
+        `${cfg.url}/rest/v1/meridian_stories?select=id,title,summary,section,published_at,primary_source,score,sources,image_url,image_source&id=eq.${encodeURIComponent(
           id
         )}&limit=1`,
         {
