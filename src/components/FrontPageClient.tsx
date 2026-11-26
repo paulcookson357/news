@@ -34,6 +34,85 @@ function chunkIntoThree<T>(items: T[]): T[][] {
   return rows;
 }
 
+function SectionFolioGrid({ items }: { items: StorySummary[] }) {
+  if (items.length >= 5) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-[#D4CCC0]">
+        <div className="lg:col-span-5 lg:pr-6 pb-5 lg:pb-0 border-b lg:border-b-0 border-[#D4CCC0] flex">
+          <StoryCard story={items[0]} variant="featured" showImage />
+        </div>
+        <div className="lg:col-span-7 lg:pl-6 pt-5 lg:pt-0 grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#D4CCC0]">
+          <div className="sm:pr-5 flex flex-col divide-y divide-[#D4CCC0]">
+            {items.slice(1, 3).map((story) => (
+              <div
+                key={story.id}
+                className="flex flex-1 py-4 first:pt-0 last:pb-0"
+              >
+                <StoryCard story={story} variant="standard" />
+              </div>
+            ))}
+          </div>
+          <div className="sm:pl-5 pt-4 sm:pt-0 border-t sm:border-t-0 border-[#D4CCC0] flex flex-col divide-y divide-[#D4CCC0]">
+            {items.slice(3, 5).map((story) => (
+              <div
+                key={story.id}
+                className="flex flex-1 py-4 first:pt-0 last:pb-0"
+              >
+                <StoryCard story={story} variant="standard" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 3 || items.length === 4) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-[#D4CCC0]">
+        <div className="lg:col-span-6 lg:pr-6 pb-5 lg:pb-0 border-b lg:border-b-0 border-[#D4CCC0] flex">
+          <StoryCard story={items[0]} variant="featured" showImage />
+        </div>
+        <div className="lg:col-span-6 lg:pl-6 pt-5 lg:pt-0 flex flex-col divide-y divide-[#D4CCC0]">
+          {items.slice(1).map((story) => (
+            <div key={story.id} className="py-3.5 first:pt-0 last:pb-0">
+              <StoryCard
+                story={story}
+                variant={items.length === 4 ? 'brief' : 'standard'}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 2) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]">
+        {items.map((story, idx) => (
+          <div
+            key={story.id}
+            className={
+              idx === 0
+                ? 'flex pb-4 md:pb-0 md:pr-6'
+                : 'flex pt-4 md:pt-0 md:pl-6'
+            }
+          >
+            <StoryCard story={story} variant="standard" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 1) {
+    return <StoryCard story={items[0]} variant="featured" />;
+  }
+
+  return null;
+}
+
 export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
   const [edition, setEdition] = useState<Edition>(initialEdition);
   const [activeSection, setActiveSection] = useState<NewsSection>('front');
@@ -142,13 +221,13 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
     const used = new Set<string>([lead.id]);
     const remaining = filteredStories.filter((s) => !used.has(s.id));
 
-    const left = remaining.slice(0, 2);
+    const left = remaining.slice(0, 3);
     left.forEach((s) => used.add(s.id));
 
-    const centerSub = remaining.slice(2, 4);
+    const centerSub = remaining.slice(3, 5);
     centerSub.forEach((s) => used.add(s.id));
 
-    const right = remaining.slice(4, 7);
+    const right = remaining.slice(5, 10);
     right.forEach((s) => used.add(s.id));
 
     const folios: Record<StoryCategory, StorySummary[]> = {
@@ -162,7 +241,7 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
     for (const cat of SECTION_ORDER) {
       folios[cat] = filteredStories
         .filter((s) => s.section === cat && !used.has(s.id))
-        .slice(0, 6);
+        .slice(0, 5);
     }
 
     return {
@@ -214,7 +293,7 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                     <div key={story.id} className="py-4 first:pt-0 last:pb-0">
                       <StoryCard
                         story={story}
-                        variant="featured"
+                        variant={idx === 0 ? 'featured' : 'standard'}
                         showImage={idx === 0}
                       />
                     </div>
@@ -269,7 +348,6 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
             {SECTION_ORDER.map((category) => {
               const items = sectionFolios[category] ?? [];
               if (items.length === 0) return null;
-              const rows = chunkIntoThree(items);
 
               return (
                 <section
@@ -290,32 +368,7 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                     </button>
                   </div>
 
-                  <div className="divide-y divide-[#D4CCC0]">
-                    {rows.map((row, rowIdx) => (
-                      <div
-                        key={rowIdx}
-                        className="py-5 first:pt-0 last:pb-0 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]"
-                      >
-                        {row.map((story, colIdx) => (
-                          <div
-                            key={story.id}
-                            className={`flex py-4 first:pt-0 last:pb-0 md:py-0 ${colIdx === 0
-                              ? 'md:pr-6'
-                              : colIdx === 1
-                                ? 'md:px-6'
-                                : 'md:pl-6'
-                              }`}
-                          >
-                            <StoryCard
-                              story={story}
-                              variant="standard"
-                              showImage={rowIdx === 0 && colIdx === 0}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                  <SectionFolioGrid items={items} />
                 </section>
               );
             })}
@@ -346,11 +399,18 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
                         showImage
                       />
                     </div>
-                    <div className="lg:col-span-4 lg:pl-6 pt-6 lg:pt-0 flex">
-                      <StoryCard
-                        story={filteredStories[1]}
-                        variant="featured"
-                      />
+                    <div className="lg:col-span-4 lg:pl-6 pt-6 lg:pt-0 flex flex-col divide-y divide-[#D4CCC0]">
+                      {filteredStories.slice(1, 4).map((story, idx) => (
+                        <div
+                          key={story.id}
+                          className="py-4 first:pt-0 last:pb-0"
+                        >
+                          <StoryCard
+                            story={story}
+                            variant={idx === 0 ? 'featured' : 'standard'}
+                          />
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : (
@@ -367,21 +427,34 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
               {chunkIntoThree(
                 searchQuery
                   ? filteredStories
-                  : filteredStories.slice(filteredStories.length >= 2 ? 2 : 1)
+                  : filteredStories.slice(Math.min(filteredStories.length, 4))
               ).map((row, rowIdx) => (
                 <div
                   key={rowIdx}
-                  className="py-5 first:pt-0 last:pb-0 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]"
+                  className={`py-5 first:pt-0 last:pb-0 grid grid-cols-1 ${
+                    row.length === 1
+                      ? ''
+                      : row.length === 2
+                        ? 'md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]'
+                        : 'md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]'
+                  }`}
                 >
                   {row.map((story, colIdx) => (
                     <div
                       key={story.id}
-                      className={`flex py-4 first:pt-0 last:pb-0 md:py-0 ${colIdx === 0
-                        ? 'md:pr-6'
-                        : colIdx === 1
-                          ? 'md:px-6'
-                          : 'md:pl-6'
-                        }`}
+                      className={`flex py-4 first:pt-0 last:pb-0 md:py-0 ${
+                        row.length === 1
+                          ? ''
+                          : row.length === 2
+                            ? colIdx === 0
+                              ? 'md:pr-6'
+                              : 'md:pl-6'
+                            : colIdx === 0
+                              ? 'md:pr-6'
+                              : colIdx === 1
+                                ? 'md:px-6'
+                                : 'md:pl-6'
+                      }`}
                     >
                       <StoryCard story={story} variant="standard" />
                     </div>

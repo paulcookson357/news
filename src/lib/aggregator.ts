@@ -561,11 +561,11 @@ function curateBalancedEdition(allStories: StorySummary[]): StorySummary[] {
     'environment',
   ];
   const targetPerCategory: Record<StoryCategory, number> = {
-    uk: 10,
-    world: 12,
-    business: 8,
-    tech: 8,
-    environment: 7,
+    uk: 12,
+    world: 16,
+    business: 9,
+    tech: 9,
+    environment: 8,
   };
 
   const selected: StorySummary[] = [];
@@ -578,12 +578,13 @@ function curateBalancedEdition(allStories: StorySummary[]): StorySummary[] {
 
     const catPicked: StorySummary[] = [];
     const outletCounts: Record<string, number> = {};
+    const maxPerOutlet = targetPerCategory[cat] >= 12 ? 4 : 3;
 
     // First pass: ensure publisher diversity within each section
     for (const story of pool) {
       if (catPicked.length >= targetPerCategory[cat]) break;
       const count = outletCounts[story.primarySource] ?? 0;
-      if (count >= 3 && pool.length > targetPerCategory[cat]) continue;
+      if (count >= maxPerOutlet && pool.length > targetPerCategory[cat]) continue;
       catPicked.push(story);
       usedIds.add(story.id);
       outletCounts[story.primarySource] = count + 1;
@@ -676,7 +677,7 @@ async function enrichFeaturedStoryImages(stories: StorySummary[]): Promise<void>
   const aboveFoldUsed = new Set<string>([lead.id]);
   const remaining = stories.filter((s) => !aboveFoldUsed.has(s.id));
   const leftTop = remaining[0];
-  remaining.slice(0, 7).forEach((s) => aboveFoldUsed.add(s.id));
+  remaining.slice(0, 10).forEach((s) => aboveFoldUsed.add(s.id));
 
   const targetMap = new Map<string, StorySummary>();
   targetMap.set(lead.id, lead);
