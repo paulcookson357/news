@@ -130,6 +130,24 @@ export const REPUTABLE_DOMAINS: Record<string, SourceMeta> = {
     region: 'International',
     type: 'Science Wire',
   },
+  'cnbc.com': {
+    name: 'CNBC',
+    domain: 'cnbc.com',
+    region: 'United States / Global',
+    type: 'Financial & Markets Desk',
+  },
+  'investing.com': {
+    name: 'Investing.com',
+    domain: 'investing.com',
+    region: 'International',
+    type: 'Macro & Markets Wire',
+  },
+  'fxstreet.com': {
+    name: 'FXStreet',
+    domain: 'fxstreet.com',
+    region: 'International',
+    type: 'FX & Macro Desk',
+  },
 };
 
 export const RSS_FEEDS: FeedConfig[] = [
@@ -274,6 +292,38 @@ export const RSS_FEEDS: FeedConfig[] = [
     type: 'Public Broadcaster',
     section: 'business',
     url: 'https://feeds.npr.org/1001/rss.xml',
+  },
+  {
+    name: 'CNBC',
+    domain: 'cnbc.com',
+    region: 'United States / Global',
+    type: 'Financial & Markets Desk',
+    section: 'business',
+    url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258',
+  },
+  {
+    name: 'CNBC',
+    domain: 'cnbc.com',
+    region: 'United States / Global',
+    type: 'Financial & Markets Desk',
+    section: 'world',
+    url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362',
+  },
+  {
+    name: 'Investing.com',
+    domain: 'investing.com',
+    region: 'International',
+    type: 'Macro & Markets Wire',
+    section: 'business',
+    url: 'https://www.investing.com/rss/news_14.rss',
+  },
+  {
+    name: 'FXStreet',
+    domain: 'fxstreet.com',
+    region: 'International',
+    type: 'FX & Macro Desk',
+    section: 'business',
+    url: 'https://www.fxstreet.com/rss/news',
   },
 
   // Science & Technology

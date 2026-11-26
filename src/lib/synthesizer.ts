@@ -25,7 +25,7 @@ export interface SynthesisOutput {
   synthesisMode: 'ai' | 'algorithmic';
 }
 
-interface AttributedParagraph {
+interface NarrativeParagraph {
   text: string;
   sourceName: string;
   tokens: string[];
@@ -34,62 +34,49 @@ interface AttributedParagraph {
   indexInSource: number;
 }
 
-function alreadyMentionsOutlet(text: string, sourceName: string): boolean {
-  const lower = text.toLowerCase();
-  const baseName = sourceName.toLowerCase().replace(/^the\s+/, '');
-  return lower.includes(baseName);
+function isQuoteHeavyParagraph(text: string): boolean {
+  const trimmed = text.trim();
+  // Standalone quote paragraphs (no preceding narrative framing)
+  if (/^["“'‘]/.test(trimmed)) return true;
+
+  // Compute proportion of characters inside direct quotes
+  const quotedSegments = trimmed.match(/["“][^"”]{10,}["”]/g) ?? [];
+  const quotedLen = quotedSegments.reduce((sum, seg) => sum + seg.length, 0);
+  if (trimmed.length > 0 && quotedLen / trimmed.length > 0.55) {
+    return true;
+  }
+  return false;
 }
 
-function applySourceAttribution(
-  text: string,
-  sourceName: string,
-  variantIndex: number
-): string {
-  const trimmed = text.trim();
-  if (!trimmed) return trimmed;
-  if (alreadyMentionsOutlet(trimmed, sourceName)) {
-    return trimmed;
-  }
+function stripOutletSelfReferences(text: string): string {
+  return text
+    .replace(/\s*\((?:Reuters|AP|Associated Press|BBC|BBC News|CNBC|AFP)\)\s*$/i, '')
+    .replace(/\s*[—–-]\s*(?:BBC News|The Guardian|CNBC|Deutsche Welle|France 24|Al Jazeera|NPR|Sky News|PBS NewsHour|Investing\.com|FXStreet)\.?$/i, '.')
+    .replace(/\s+\b(?:BBC News|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|France 24|CNBC|Investing\.com|FXStreet)\s*$/i, '')
+    .replace(/\s*\bDW has more\.?$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  // Keep quoted opening lines clean and unambiguous
-  if (/^["“'‘]/.test(trimmed)) {
-    return `${sourceName} quotes: ${trimmed}`;
-  }
-
-  // Only lowercase common sentence-initial non-proper words so country/person/org names keep capitalization
-  const commonStarters =
-    /^(The|A|An|It|Its|In|On|At|By|For|From|As|That|This|These|Those|There|They|Their|He|His|She|Her|We|Our|More|Most|Many|Some|Several|Over|Under|After|Before|During|Officials|Authorities|Rescuers|Police|Firefighters|Witnesses|Analysts|Campaigners|Ministers|Lawmakers|Protesters|Investors|Economists|Researchers|Scientists)\b/;
-  const lowerStart = commonStarters.test(trimmed)
-    ? trimmed[0].toLowerCase() + trimmed.slice(1)
-    : trimmed;
-
-  const patterns = [
-    `According to ${sourceName}, ${lowerStart}`,
-    `${sourceName} reports that ${lowerStart}`,
-    `Reporting by ${sourceName} notes that ${lowerStart}`,
-    `As detailed by ${sourceName}, ${lowerStart}`,
-    `${sourceName} further notes that ${lowerStart}`,
-  ];
-
-  return patterns[variantIndex % patterns.length];
+function isSubstantiveSentence(text: string): boolean {
+  if (text.length < 50) return false;
+  if (/\.\.\.$/.test(text) || /…$/.test(text)) return false;
+  return /[.!?]["”'’)]?$/.test(text);
 }
 
 function scoreParagraph(text: string, indexInSource: number): number {
   let score = 0;
-  // Lead paragraphs carry core who/what/where/when facts
   if (indexInSource === 0) score += 6;
   else if (indexInSource === 1) score += 4.5;
   else if (indexInSource <= 3) score += 3;
   else score += 1.5;
 
-  // Factual density signals: figures, percentages, dates, quotes, officials
   if (/\d+/.test(text)) score += 2.2;
   if (/[£$€%]|\bmillion\b|\bbillion\b/i.test(text)) score += 1.5;
-  if (/[“"'].*[”"']/.test(text)) score += 1.2;
-  if (/\b(said|announced|confirmed|stated|told|warned|reported|according to)\b/i.test(text)) {
-    score += 1.5;
+  if (/\b(said|announced|confirmed|stated|warned|reported|rose|fell|grew|cut)\b/i.test(text)) {
+    score += 1.2;
   }
-  if (text.length >= 110 && text.length <= 360) score += 1.2;
+  if (text.length >= 110 && text.length <= 380) score += 1.2;
   return score;
 }
 
@@ -98,161 +85,178 @@ function synthesizeWithAlgorithms(
   summary: string,
   materials: SourceMaterial[]
 ): SynthesisOutput {
-  const sourceNames = materials.map((m) => m.meta.name);
-  const candidates: AttributedParagraph[] = [];
-
-  for (const mat of materials) {
-    const rawBlocks =
-      mat.paragraphs.length > 0
-        ? mat.paragraphs
-        : mat.snippet && mat.snippet.length >= 45
-          ? [mat.snippet]
-          : [];
-
-    rawBlocks.forEach((p, idx) => {
-      const { tokens, properNouns } = extractKeywords(p);
-      if (tokens.length < 4) return;
-      candidates.push({
-        text: p,
-        sourceName: mat.meta.name,
-        tokens,
-        properNouns,
-        score: scoreParagraph(p, idx),
-        indexInSource: idx,
-      });
-    });
-  }
-
-  // Round-robin interleave across sources by paragraph index and factual score
-  // while deduplicating near-identical statements across outlets
-  const prioritized = [...candidates].sort((a, b) => {
-    if (a.indexInSource !== b.indexInSource) {
-      return a.indexInSource - b.indexInSource;
-    }
-    return b.score - a.score;
+  // Prioritize extracted full-text reporting and freshest timestamps first so
+  // the narrative spine reflects the latest confirmed developments without contradicting itself.
+  const orderedMaterials = [...materials].sort((a, b) => {
+    const aExtracted = a.fetchStatus === 'extracted' ? 1 : 0;
+    const bExtracted = b.fetchStatus === 'extracted' ? 1 : 0;
+    if (aExtracted !== bExtracted) return bExtracted - aExtracted;
+    return b.publishedAt.localeCompare(a.publishedAt);
   });
 
-  const accepted: AttributedParagraph[] = [];
-  const corroborations: string[] = [];
-
-  for (const candidate of prioritized) {
-    const duplicateOf = accepted.find(
+  const accepted: NarrativeParagraph[] = [];
+  const acceptIfDistinct = (candidate: NarrativeParagraph): boolean => {
+    const threshold = candidate.indexInSource === 0 ? 0.28 : 0.36;
+    const duplicate = accepted.some(
       (existing) =>
         computeSimilarity(
           candidate.tokens,
           candidate.properNouns,
           existing.tokens,
           existing.properNouns
-        ) >= 0.48
+        ) >= threshold
     );
-
-    if (duplicateOf) {
-      if (duplicateOf.sourceName !== candidate.sourceName) {
-        corroborations.push(`${duplicateOf.sourceName} & ${candidate.sourceName}`);
-      }
-      continue;
-    }
-
+    if (duplicate) return false;
     accepted.push(candidate);
-    if (accepted.length >= 14) break;
+    return true;
+  };
+
+  // 1. Build cohesive narrative spine from the freshest extracted primary article
+  const primary = orderedMaterials[0];
+  if (primary) {
+    const primaryBlocks =
+      primary.paragraphs.length > 0
+        ? primary.paragraphs
+        : primary.snippet && isSubstantiveSentence(primary.snippet)
+          ? [primary.snippet]
+          : [];
+
+    primaryBlocks.forEach((rawP, idx) => {
+      if (accepted.length >= 6) return;
+      const cleaned = stripOutletSelfReferences(rawP);
+      if (!cleaned || !isSubstantiveSentence(cleaned) || isQuoteHeavyParagraph(cleaned)) return;
+      const { tokens, properNouns } = extractKeywords(cleaned);
+      if (tokens.length < 4) return;
+      acceptIfDistinct({
+        text: cleaned,
+        sourceName: primary.meta.name,
+        tokens,
+        properNouns,
+        score: scoreParagraph(cleaned, idx),
+        indexInSource: idx,
+      });
+    });
   }
 
-  // Build standfirst
-  const leadSource = materials[0];
+  // 2. Enrich with genuinely new factual developments and background from secondary sources
+  for (const mat of orderedMaterials.slice(1)) {
+    if (accepted.length >= 10) break;
+    const blocks =
+      mat.paragraphs.length > 0
+        ? mat.paragraphs
+        : mat.snippet && isSubstantiveSentence(mat.snippet)
+          ? [mat.snippet]
+          : [];
+
+    let addedFromSource = 0;
+    for (let idx = 0; idx < blocks.length; idx++) {
+      if (accepted.length >= 10 || addedFromSource >= 2) break;
+      // Skip opening lead paragraph on older secondary articles when we already have a full-text lead
+      if (idx === 0 && primary?.fetchStatus === 'extracted' && blocks.length > 1) {
+        continue;
+      }
+      const cleaned = stripOutletSelfReferences(blocks[idx]);
+      if (!cleaned || !isSubstantiveSentence(cleaned) || isQuoteHeavyParagraph(cleaned)) continue;
+      const { tokens, properNouns } = extractKeywords(cleaned);
+      if (tokens.length < 4) continue;
+      if (
+        acceptIfDistinct({
+          text: cleaned,
+          sourceName: mat.meta.name,
+          tokens,
+          properNouns,
+          score: scoreParagraph(cleaned, idx),
+          indexInSource: idx,
+        })
+      ) {
+        addedFromSource++;
+      }
+    }
+  }
+
+  // Fallback if aggressive quote filtering left very few paragraphs
+  if (accepted.length < 2) {
+    for (const mat of orderedMaterials) {
+      const blocks =
+        mat.paragraphs.length > 0
+          ? mat.paragraphs
+          : mat.snippet
+            ? [mat.snippet]
+            : [];
+      for (let idx = 0; idx < blocks.length; idx++) {
+        if (accepted.length >= 5) break;
+        const cleaned = stripOutletSelfReferences(blocks[idx]);
+        if (!cleaned) continue;
+        const { tokens, properNouns } = extractKeywords(cleaned);
+        if (tokens.length < 3) continue;
+        acceptIfDistinct({
+          text: cleaned,
+          sourceName: mat.meta.name,
+          tokens,
+          properNouns,
+          score: scoreParagraph(cleaned, idx),
+          indexInSource: idx,
+        });
+      }
+    }
+  }
+
   const standfirst =
     summary && summary.length >= 60
       ? summary
       : summarizeToConcise(
-          leadSource?.paragraphs[0] || leadSource?.snippet || headline,
+          accepted[0]?.text || primary?.snippet || headline,
           220
         );
 
-  // Build key facts (top 4 concise non-redundant points with outlet tag)
   const keyFacts: string[] = [];
   const factCandidates = [...accepted]
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 4);
 
   for (const fact of factCandidates) {
     const concise = summarizeToConcise(fact.text, 190);
     if (concise) {
-      keyFacts.push(`${concise} (${fact.sourceName})`);
+      keyFacts.push(concise);
     }
   }
 
   if (keyFacts.length === 0) {
-    for (const mat of materials.slice(0, 4)) {
-      keyFacts.push(`${mat.title} (${mat.meta.name})`);
+    for (const mat of orderedMaterials.slice(0, 4)) {
+      keyFacts.push(mat.title);
     }
   }
 
-  // Partition accepted paragraphs into balanced broadsheet sections
-  const attributed = accepted.map((item, idx) =>
-    applySourceAttribution(item.text, item.sourceName, idx)
-  );
-
+  const proseParagraphs = accepted.map((item) => item.text);
   const sections: DeepDiveSection[] = [];
 
-  if (attributed.length >= 6) {
-    const coreEnd = Math.min(3, Math.ceil(attributed.length / 3));
-    const detailEnd = Math.min(attributed.length - 1, coreEnd + 5);
-
+  if (proseParagraphs.length >= 7) {
+    const splitAt = Math.min(5, Math.ceil(proseParagraphs.length * 0.55));
     sections.push({
-      heading: 'Core Developments',
-      paragraphs: attributed.slice(0, coreEnd),
+      heading: 'Lead Story',
+      paragraphs: proseParagraphs.slice(0, splitAt),
     });
     sections.push({
-      heading: 'Detailed Reporting Across Sources',
-      paragraphs: attributed.slice(coreEnd, detailEnd),
+      heading: 'Background & Context',
+      paragraphs: proseParagraphs.slice(splitAt),
     });
-    if (detailEnd < attributed.length) {
-      sections.push({
-        heading: 'Broader Context & Additional Coverage',
-        paragraphs: attributed.slice(detailEnd),
-      });
-    }
-  } else if (attributed.length > 0) {
-    const splitAt = Math.max(1, Math.ceil(attributed.length / 2));
+  } else if (proseParagraphs.length > 0) {
     sections.push({
-      heading: 'Core Developments',
-      paragraphs: attributed.slice(0, splitAt),
+      heading: 'Lead Story',
+      paragraphs: proseParagraphs,
     });
-    if (splitAt < attributed.length) {
-      sections.push({
-        heading: 'Additional Source Reporting',
-        paragraphs: attributed.slice(splitAt),
-      });
-    }
   } else {
     sections.push({
-      heading: 'Dispatches Summary',
-      paragraphs: materials.map(
-        (mat) =>
-          `${mat.meta.name} reported on this development under the headline "${mat.title}".${
-            mat.snippet ? ` ${mat.snippet}` : ''
-          }`
-      ),
+      heading: 'Lead Story',
+      paragraphs: orderedMaterials
+        .map((mat) => stripOutletSelfReferences(mat.snippet || mat.title))
+        .filter(Boolean),
     });
   }
 
-  const uniqueCorroborations = Array.from(new Set(corroborations)).slice(0, 3);
-  const extractedCount = materials.filter(
-    (m) => m.fetchStatus === 'extracted'
-  ).length;
-
-  const editorialNote = [
-    `Compiled from ${materials.length} independent ${
-      materials.length === 1 ? 'source' : 'sources'
-    } (${sourceNames.join(', ')})`,
-    extractedCount > 0
-      ? `with full-text extraction from ${extractedCount} ${
-          extractedCount === 1 ? 'outlet' : 'outlets'
-        }.`
-      : 'using verified wire summaries.',
-    uniqueCorroborations.length > 0
-      ? `Cross-source factual overlap verified between ${uniqueCorroborations.join('; ')}.`
-      : 'Prepared using keyless multi-source factual assembly without editorial opinion.',
-  ].join(' ');
+  const editorialNote = `Compiled from ${materials.length} independent news ${
+    materials.length === 1 ? 'source' : 'sources'
+  } referenced below, synthesized without editorial opinion.`;
 
   return {
     standfirst,
@@ -278,28 +282,29 @@ async function synthesizeWithGemini(
         m.paragraphs.length > 0
           ? m.paragraphs.slice(0, 10).join('\n\n')
           : m.snippet || m.title;
-      return `[SOURCE ${idx + 1}: ${m.meta.name} | Region: ${m.meta.region} | Type: ${m.meta.type} | Published: ${m.publishedAt}]\nHeadline: ${m.title}\nExcerpt/Text:\n${body}`;
+      return `[SOURCE ${idx + 1}: ${m.meta.name} | Region: ${m.meta.region} | Published: ${m.publishedAt}]\nHeadline: ${m.title}\nExcerpt/Text:\n${body}`;
     })
     .join('\n\n---\n\n');
 
-  const prompt = `You are a senior broadsheet correspondent for The Meridian (a non-partisan, factual UK & International newspaper).
-Write an expanded, balanced, strictly factual multi-source report on the story below using ONLY the provided source material.
+  const prompt = `You are a senior broadsheet journalist writing for The Meridian (a non-partisan, factual UK & International newspaper).
+Write an expanded, balanced, strictly factual news article on the story below using ONLY the provided source material.
 
 RULES:
-1. Remain strictly neutral, objective, and factual. Do not invent facts, numbers, quotes, or dates not present in the sources.
-2. Explicitly acknowledge sources inline throughout the prose (e.g., "According to BBC News...", "The Guardian reported...", "Deutsche Welle noted...").
-3. Compare or include distinct factual details from the different sources where available so the coverage is balanced.
-4. Keep prose crisp, authoritative, and classic broadsheet style (British English spelling preferred where natural).
-5. Return ONLY valid JSON matching this exact schema:
+1. Write as a single, seamless, authoritative standard news article in crisp inverted-pyramid broadsheet prose (British English spelling preferred where natural).
+2. Do NOT attribute facts or statements to news outlets inside the article prose or key facts (never write "According to BBC News...", "The Guardian reported...", "CNBC noted...", etc.). All consulted outlets are referenced in a dedicated section below the article.
+3. Do NOT write a collection of quotes. Synthesize reported statements and figures into natural third-person narrative prose; use at most one brief direct quote only if essential to the story.
+4. Reconcile timestamps across sources so the story consistently reflects the latest verified facts without contradicting itself.
+5. Remain strictly neutral, objective, and factual. Do not invent facts, numbers, quotes, or dates not present in the sources.
+6. Return ONLY valid JSON matching this exact schema:
 {
   "standfirst": "A concise 1-2 sentence factual deck summarizing the story.",
-  "keyFacts": ["3 to 5 concise verified bullet facts, each ending with the source name in parentheses e.g. (BBC News)"],
+  "keyFacts": ["3 to 4 concise verified bullet facts with NO outlet names in parentheses"],
   "sections": [
-    { "heading": "Core Developments", "paragraphs": ["2-3 detailed factual paragraphs"] },
-    { "heading": "Detailed Reporting & Perspectives", "paragraphs": ["2-4 paragraphs weaving facts from multiple outlets"] },
-    { "heading": "Broader Context", "paragraphs": ["1-2 paragraphs of background context from the sources"] }
+    { "heading": "Lead Story", "paragraphs": ["3-4 cohesive narrative opening paragraphs"] },
+    { "heading": "Key Developments", "paragraphs": ["2-3 narrative paragraphs covering details and impacts"] },
+    { "heading": "Background & Context", "paragraphs": ["1-2 paragraphs of factual background"] }
   ],
-  "editorialNote": "One brief neutral sentence explaining the sources synthesized and any differences in emphasis."
+  "editorialNote": "One brief neutral sentence noting this report was compiled from the independent sources referenced below."
 }
 
 Story Headline: ${headline}
@@ -359,12 +364,14 @@ ${sourceDossiers}`;
 
     return {
       standfirst: parsed.standfirst,
-      keyFacts: parsed.keyFacts.filter((f): f is string => typeof f === 'string').slice(0, 5),
+      keyFacts: parsed.keyFacts
+        .filter((f): f is string => typeof f === 'string')
+        .slice(0, 5),
       sections: validSections,
       editorialNote:
         typeof parsed.editorialNote === 'string'
           ? parsed.editorialNote
-          : `Synthesized from ${materials.length} reputable sources.`,
+          : `Compiled from ${materials.length} independent news sources referenced below.`,
       synthesisMode: 'ai',
     };
   } catch {

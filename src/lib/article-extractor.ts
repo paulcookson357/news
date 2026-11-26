@@ -42,6 +42,12 @@ const BOILERPLATE_PATTERNS = [
   /video player from loading/i,
   /content you requested does not exist/i,
   /enable javascript/i,
+  /\bDW has more\b/i,
+  /^reporting by\b/i,
+  /^additional reporting by\b/i,
+  /^editing by\b/i,
+  /^writing by\b/i,
+  /^with files from\b/i,
 ];
 
 function isCleanParagraph(text: string): boolean {

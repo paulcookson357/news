@@ -72,7 +72,7 @@ export function StoryDeepDiveClient({
         setArticle(data.article);
         try {
           window.localStorage.setItem(
-            `meridian_deepdive_${storyId}`,
+            `meridian_deepdive_v2_${storyId}`,
             JSON.stringify(data.article)
           );
         } catch {
@@ -112,7 +112,7 @@ export function StoryDeepDiveClient({
         }
 
         const storedDive = window.localStorage.getItem(
-          `meridian_deepdive_${storyId}`
+          `meridian_deepdive_v2_${storyId}`
         );
         if (storedDive) {
           const cachedDive = JSON.parse(storedDive) as DeepDiveArticle;
@@ -240,9 +240,10 @@ export function StoryDeepDiveClient({
                 </h2>
                 <p className="mt-2 font-editorial text-base text-[#5C574F]">
                   The Meridian is querying free news indices across BBC News,
-                  The Guardian, Associated Press, Sky News, Deutsche Welle,
-                  France 24, NPR, and Al Jazeera, extracting full article text,
-                  and assembling an expanded source-attributed report.
+                  The Guardian, Associated Press, Sky News, CNBC, Investing.com,
+                  FXStreet, Deutsche Welle, France 24, NPR, and Al Jazeera,
+                  extracting full article text, and assembling an expanded
+                  broadsheet report.
                 </p>
               </div>
             </div>
@@ -276,81 +277,81 @@ export function StoryDeepDiveClient({
           </div>
         )}
 
-        {/* Expanded Report Body + Source Attribution Ledger */}
+        {/* Expanded Report Body + Key Facts Rail + Sources Referenced Below */}
         {article && !loading && (
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Main Editorial Column */}
-            <div className="lg:col-span-8">
-              <div className="max-w-[68ch] space-y-8">
-                {article.sections.map((section, secIdx) => (
-                  <section key={section.heading}>
-                    {secIdx > 0 && (
-                      <h2 className="font-display text-2xl font-bold text-[#141413] border-b border-[#D4CCC0] pb-1.5 mb-4">
-                        {section.heading}
-                      </h2>
-                    )}
-                    <div className="space-y-4">
-                      {section.paragraphs.map((paragraph, pIdx) => (
-                        <p
-                          key={pIdx}
-                          className={`font-editorial text-[1.1rem] leading-[1.75] text-[#1E1D1B] ${
-                            secIdx === 0 && pIdx === 0
-                              ? 'broadsheet-dropcap'
-                              : ''
-                          }`}
-                        >
-                          {paragraph}
-                        </p>
-                      ))}
-                    </div>
-                  </section>
-                ))}
+          <>
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Main Editorial Column */}
+              <div className="lg:col-span-8">
+                <div className="max-w-[68ch] space-y-8">
+                  {article.sections.map((section, secIdx) => (
+                    <section key={section.heading}>
+                      {secIdx > 0 && (
+                        <h2 className="font-display text-2xl font-bold text-[#141413] border-b border-[#D4CCC0] pb-1.5 mb-4">
+                          {section.heading}
+                        </h2>
+                      )}
+                      <div className="space-y-4">
+                        {section.paragraphs.map((paragraph, pIdx) => (
+                          <p
+                            key={pIdx}
+                            className={`font-editorial text-[1.1rem] leading-[1.75] text-[#1E1D1B] ${
+                              secIdx === 0 && pIdx === 0
+                                ? 'broadsheet-dropcap'
+                                : ''
+                            }`}
+                          >
+                            {paragraph}
+                          </p>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
               </div>
 
-              {/* Editorial Methodology Note */}
-              <div className="mt-10 border-t border-b border-[#D4CCC0] bg-[#EFEAE0]/50 p-4 flex items-start gap-3 max-w-[68ch]">
-                <Scale className="h-4 w-4 text-[#1D3557] shrink-0 mt-1" />
-                <p className="font-ui text-xs leading-relaxed text-[#5C574F]">
-                  <strong className="text-[#141413]">
-                    Editorial &amp; Factual Verification Note:
-                  </strong>{' '}
-                  {article.editorialNote}
-                </p>
-              </div>
+              {/* Right Rail: Key Facts */}
+              <aside className="lg:col-span-4 lg:border-l lg:border-[#D4CCC0] lg:pl-7">
+                <div className="border-t-2 border-[#141413] pt-3">
+                  <h2 className="font-ui text-[11px] font-bold uppercase tracking-[0.14em] text-[#141413] flex items-center gap-2">
+                    <BookOpenCheck className="h-3.5 w-3.5 text-[#8B1E24]" />
+                    <span>Key Reported Facts</span>
+                  </h2>
+                  <ul className="mt-3 space-y-2.5 divide-y divide-[#D4CCC0]/70">
+                    {article.keyFacts.map((fact, idx) => (
+                      <li
+                        key={idx}
+                        className="pt-2.5 first:pt-0 font-editorial text-[15px] leading-relaxed text-[#2C2925]"
+                      >
+                        {fact}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </aside>
             </div>
 
-            {/* Right Ledger Rail: Verified Key Facts & Primary Sources */}
-            <aside className="lg:col-span-4 lg:border-l lg:border-[#D4CCC0] lg:pl-7 space-y-8">
-              {/* Key Facts */}
-              <div className="border-t-2 border-[#141413] pt-3">
-                <h2 className="font-ui text-[11px] font-bold uppercase tracking-[0.14em] text-[#141413] flex items-center gap-2">
-                  <BookOpenCheck className="h-3.5 w-3.5 text-[#8B1E24]" />
-                  <span>Key Reported Facts</span>
+            {/* Sources Referenced Below the Article */}
+            <section
+              aria-label="Sources Referenced"
+              className="mt-10 pt-6 double-rule-top"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#D4CCC0] pb-2.5">
+                <h2 className="font-display text-2xl font-bold tracking-tight text-[#141413]">
+                  Sources Referenced ({article.sources.length})
                 </h2>
-                <ul className="mt-3 space-y-2.5 divide-y divide-[#D4CCC0]/70">
-                  {article.keyFacts.map((fact, idx) => (
-                    <li
-                      key={idx}
-                      className="pt-2.5 first:pt-0 font-editorial text-[15px] leading-relaxed text-[#2C2925]"
-                    >
-                      {fact}
-                    </li>
-                  ))}
-                </ul>
+                <p className="font-ui text-xs text-[#5C574F]">
+                  Original reporting consulted for this dispatch:
+                </p>
               </div>
 
-              {/* Consulted Sources Ledger */}
-              <div className="border-t-2 border-[#141413] pt-3">
-                <h2 className="font-ui text-[11px] font-bold uppercase tracking-[0.14em] text-[#141413]">
-                  Sources Acknowledged ({article.sources.length})
-                </h2>
-                <p className="mt-1 font-ui text-[11px] text-[#5C574F]">
-                  Read the original reporting from each consulted outlet:
-                </p>
-
-                <div className="mt-3 divide-y divide-[#D4CCC0]">
-                  {article.sources.map((src, idx) => (
-                    <div key={`${src.name}-${idx}`} className="py-3 first:pt-1">
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {article.sources.map((src, idx) => (
+                  <div
+                    key={`${src.name}-${idx}`}
+                    className="border-t border-[#D4CCC0] pt-3 flex flex-col justify-between"
+                  >
+                    <div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-ui text-xs font-bold text-[#1D3557]">
                           {src.name}
@@ -361,31 +362,36 @@ export function StoryDeepDiveClient({
                       </div>
 
                       <p className="mt-0.5 font-ui text-[10px] uppercase tracking-[0.08em] text-[#8B1E24]">
-                        {src.type} ·{' '}
-                        {src.fetchStatus === 'extracted'
-                          ? `${src.wordCount} words analyzed`
-                          : 'wire summary'}
+                        {src.type}
                       </p>
 
                       <a
                         href={src.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1.5 inline-flex items-start gap-1.5 font-editorial text-sm font-semibold text-[#141413] hover:text-[#8B1E24] transition-colors"
+                        className="mt-1.5 inline-flex items-start gap-1.5 font-editorial text-[15px] font-semibold leading-snug text-[#141413] hover:text-[#8B1E24] transition-colors"
                       >
                         <span>{src.title}</span>
                         <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-1" />
                       </a>
-
-                      <p className="mt-1 font-ui text-[11px] text-[#5C574F]">
-                        {formatStoryTime(src.publishedAt)}
-                      </p>
                     </div>
-                  ))}
-                </div>
+
+                    <p className="mt-2 font-ui text-[11px] text-[#5C574F]">
+                      {formatStoryTime(src.publishedAt)}
+                    </p>
+                  </div>
+                ))}
               </div>
-            </aside>
-          </div>
+
+              <div className="mt-6 border-t border-b border-[#D4CCC0] bg-[#EFEAE0]/50 p-4 flex items-start gap-3">
+                <Scale className="h-4 w-4 text-[#1D3557] shrink-0 mt-0.5" />
+                <p className="font-ui text-xs leading-relaxed text-[#5C574F]">
+                  <strong className="text-[#141413]">Editorial Note:</strong>{' '}
+                  {article.editorialNote}
+                </p>
+              </div>
+            </section>
+          </>
         )}
       </main>
 

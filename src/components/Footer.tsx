@@ -10,6 +10,9 @@ const REPUTABLE_SOURCE_LIST = [
   'PBS NewsHour',
   'ABC News (AU)',
   'Ars Technica',
+  'CNBC',
+  'Investing.com',
+  'FXStreet',
 ];
 
 export function Footer() {
@@ -25,8 +28,8 @@ export function Footer() {
               An independent, non-partisan broadsheet news reader. Front-page
               summaries are distilled directly from free, publicly accessible
               news feeds. Opening any headline triggers a second live internet
-              search across reputable outlets to assemble an expanded,
-              source-attributed dispatch.
+              search across reputable outlets to assemble an expanded news
+              report.
             </p>
           </div>
 
@@ -45,8 +48,8 @@ export function Footer() {
             </h2>
             <p className="mt-2 font-ui text-xs leading-relaxed text-[#5C574F]">
               Opinion columns, commentary blogs, and paywalled tabloids are
-              excluded automatically. Every expanded report explicitly cites and
-              links to the original reporting outlets.
+              excluded automatically. Every expanded report references and links
+              to its original reporting outlets below the article.
             </p>
           </div>
         </div>

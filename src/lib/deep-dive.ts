@@ -40,7 +40,7 @@ interface SearchCandidate {
 }
 
 const SCOPED_SITES =
-  'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org';
+  'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org OR site:cnbc.com';
 
 async function searchRssEndpoint(
   url: string,
@@ -104,6 +104,9 @@ export async function buildDeepDiveReport(
   const storyKeywords = extractKeywords(`${input.title} ${input.summary}`);
   const candidateMap = new Map<string, SearchCandidate>();
 
+  const MAX_DEEP_DIVE_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+
   const registerCandidate = (
     meta: SourceMeta,
     title: string,
@@ -113,6 +116,11 @@ export async function buildDeepDiveReport(
     baseBoost = 0
   ) => {
     if (!url || !title || !isFactualNewsUrl(url, title)) return;
+
+    const pubMs = Date.parse(publishedAt);
+    if (baseBoost === 0 && !Number.isNaN(pubMs) && nowMs - pubMs > MAX_DEEP_DIVE_AGE_MS) {
+      return;
+    }
 
     const itemKw = extractKeywords(`${title} ${snippet.slice(0, 120)}`);
     const sim = computeSimilarity(
@@ -192,7 +200,7 @@ export async function buildDeepDiveReport(
   // 4. Process live Google News hits if publisher suffix matches a reputable outlet
   for (const hit of googleHits) {
     const match = hit.snippet.match(
-      /(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|Euronews|CBC News)/i
+      /(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|Euronews|CBC News|CNBC|Investing\.com|FXStreet)/i
     );
     if (!match) continue;
     const matchedName = match[1];
