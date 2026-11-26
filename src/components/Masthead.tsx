@@ -40,6 +40,16 @@ function formatUpdatedTime(iso: string): string {
   }).format(date) + ' GMT';
 }
 
+function getEditionSlotLabel(iso: string): string {
+  if (!iso) return 'Edition';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Edition';
+  const mins = date.getUTCHours() * 60 + date.getUTCMinutes();
+  if (mins >= 4 * 60 && mins < 11 * 60 + 30) return 'Morning Edition';
+  if (mins >= 11 * 60 + 30 && mins < 17 * 60) return 'Midday Edition';
+  return 'Evening Edition';
+}
+
 export function Masthead({
   editionDate,
   updatedAt,
@@ -62,7 +72,7 @@ export function Masthead({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="font-semibold text-[#141413]">{editionDate}</span>
             <span className="hidden sm:inline text-[#D4CCC0]">|</span>
-            <span>UK &amp; International Edition</span>
+            <span>UK &amp; International · {getEditionSlotLabel(updatedAt)}</span>
             <span className="hidden md:inline text-[#D4CCC0]">|</span>
             <span className="hidden md:inline">
               Updated {formatUpdatedTime(updatedAt)} · {sourcesSucceeded}/
