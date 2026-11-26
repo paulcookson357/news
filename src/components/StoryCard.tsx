@@ -157,9 +157,11 @@ export function StoryCard({ story, variant = 'standard' }: StoryCardProps) {
           </h3>
         </Link>
 
-        <p className="mt-2 font-editorial text-[15px] leading-[1.55] text-[#3B3832] line-clamp-3">
-          {story.summary}
-        </p>
+        {story.summary && (
+          <p className="mt-2 font-editorial text-[15px] leading-[1.55] text-[#3B3832] line-clamp-3">
+            {story.summary}
+          </p>
+        )}
       </div>
 
       <div className="mt-3 pt-2.5 border-t border-[#D4CCC0]/70 flex flex-wrap items-center justify-between gap-2 font-ui text-[10px] text-[#5C574F]">

@@ -336,9 +336,9 @@ function clusterArticles(articles: RawArticle[]): StorySummary[] {
       snippet: m.snippet,
     }));
 
-    const summaryText =
-      (primary.snippet && summarizeToConcise(primary.snippet, 250)) ||
-      `Reported by ${sortedMembers.map((m) => m.name).join(' and ')}. Open to search reputable outlets for the full multi-source dispatch.`;
+    const summaryText = primary.snippet
+      ? summarizeToConcise(primary.snippet, 250)
+      : '';
 
     summaries.push({
       id: makeStoryId(primary.title),

@@ -136,17 +136,77 @@ export const REPUTABLE_DOMAINS: Record<string, SourceMeta> = {
     region: 'United States / Global',
     type: 'Financial & Markets Desk',
   },
-  'investing.com': {
-    name: 'Investing.com',
-    domain: 'investing.com',
-    region: 'International',
-    type: 'Macro & Markets Wire',
-  },
   'fxstreet.com': {
     name: 'FXStreet',
     domain: 'fxstreet.com',
     region: 'International',
     type: 'FX & Macro Desk',
+  },
+  'straitstimes.com': {
+    name: 'The Straits Times',
+    domain: 'straitstimes.com',
+    region: 'Singapore / International',
+    type: 'Broadsheet Newspaper',
+  },
+  'politico.eu': {
+    name: 'Politico',
+    domain: 'politico.eu',
+    region: 'Europe',
+    type: 'Political & Policy Desk',
+  },
+  'politico.com': {
+    name: 'Politico',
+    domain: 'politico.com',
+    region: 'United States',
+    type: 'Political & Policy Desk',
+  },
+  'rte.ie': {
+    name: 'RTÉ News',
+    domain: 'rte.ie',
+    region: 'Ireland / Europe',
+    type: 'Public Broadcaster',
+  },
+  'rnz.co.nz': {
+    name: 'RNZ',
+    domain: 'rnz.co.nz',
+    region: 'New Zealand / Pacific',
+    type: 'Public Broadcaster',
+  },
+  'globalnews.ca': {
+    name: 'Global News',
+    domain: 'globalnews.ca',
+    region: 'Canada',
+    type: 'Broadcast News',
+  },
+  'cbsnews.com': {
+    name: 'CBS News',
+    domain: 'cbsnews.com',
+    region: 'United States',
+    type: 'Broadcast News',
+  },
+  'nbcnews.com': {
+    name: 'NBC News',
+    domain: 'nbcnews.com',
+    region: 'United States',
+    type: 'Broadcast News',
+  },
+  'abcnews.go.com': {
+    name: 'ABC News',
+    domain: 'abcnews.go.com',
+    region: 'United States',
+    type: 'Broadcast News',
+  },
+  'news.yahoo.com': {
+    name: 'Yahoo News',
+    domain: 'news.yahoo.com',
+    region: 'International',
+    type: 'News & Wire Desk',
+  },
+  'finance.yahoo.com': {
+    name: 'Yahoo Finance',
+    domain: 'finance.yahoo.com',
+    region: 'International',
+    type: 'Markets & Wire Desk',
   },
 };
 
@@ -308,14 +368,6 @@ export const RSS_FEEDS: FeedConfig[] = [
     type: 'Financial & Markets Desk',
     section: 'world',
     url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362',
-  },
-  {
-    name: 'Investing.com',
-    domain: 'investing.com',
-    region: 'International',
-    type: 'Macro & Markets Wire',
-    section: 'business',
-    url: 'https://www.investing.com/rss/news_14.rss',
   },
   {
     name: 'FXStreet',

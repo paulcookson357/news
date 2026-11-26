@@ -50,6 +50,8 @@ function isQuoteHeavyParagraph(text: string): boolean {
 
 function stripOutletSelfReferences(text: string): string {
   return text
+    // Strip leading wire datelines like "OLIVA DE LA FRONTERA, Spain, Nov 26 - " or "SEVILLE, Spain — "
+    .replace(/^[A-Z][A-Z\s,.'-]{2,40}(?:,\s*[A-Za-z\s.]{2,25})?,?\s*(?:[A-Z][a-z]{2,8}\s+\d{1,2}\s*)?[-–—]\s+/, '')
     .replace(/\s*\((?:Reuters|AP|Associated Press|BBC|BBC News|CNBC|AFP)\)\s*$/i, '')
     .replace(/\s*[—–-]\s*(?:BBC News|The Guardian|CNBC|Deutsche Welle|France 24|Al Jazeera|NPR|Sky News|PBS NewsHour|Investing\.com|FXStreet)\.?$/i, '.')
     .replace(/\s+\b(?:BBC News|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|France 24|CNBC|Investing\.com|FXStreet)\s*$/i, '')
@@ -58,8 +60,13 @@ function stripOutletSelfReferences(text: string): string {
     .trim();
 }
 
+function isInternalPlaceholder(text: string): boolean {
+  return /^Reported by .*Open to search reputable outlets/i.test(text.trim());
+}
+
 function isSubstantiveSentence(text: string): boolean {
   if (text.length < 50) return false;
+  if (isInternalPlaceholder(text)) return false;
   if (/\.\.\.$/.test(text) || /…$/.test(text)) return false;
   return /[.!?]["”'’)]?$/.test(text);
 }
@@ -201,11 +208,15 @@ function synthesizeWithAlgorithms(
     }
   }
 
+  const cleanSummary = isInternalPlaceholder(summary) ? '' : summary;
   const standfirst =
-    summary && summary.length >= 60
-      ? summary
+    cleanSummary && cleanSummary.length >= 60
+      ? cleanSummary
       : summarizeToConcise(
-          accepted[0]?.text || primary?.snippet || headline,
+          accepted[0]?.text ||
+            (primary?.snippet && !isInternalPlaceholder(primary.snippet)
+              ? primary.snippet
+              : headline),
           220
         );
 

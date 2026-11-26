@@ -39,10 +39,14 @@ export function decodeAndStripHtml(raw: string): string {
 
 export function cleanHeadline(title: string): string {
   const clean = decodeAndStripHtml(title);
-  // Strip trailing outlet attributions Google News / Bing sometimes append
+  // Strip leading wire prefixes and trailing outlet attributions
   return clean
-    .replace(/\s+-\s+(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica)$/i, '')
-    .replace(/\s+\|\s+(BBC News|The Guardian|Sky News|AP News|Al Jazeera|DW)$/i, '')
+    .replace(
+      /^(?:Analysis|Exclusive|Factbox|Explainer|Insight|Focus|Special Report|Update\s*\d*|Breaking|Watch Live|Watch|Live)\s*[:—–-]\s*/i,
+      ''
+    )
+    .replace(/\s+-\s+(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|CNBC|FXStreet|Investing\.com)$/i, '')
+    .replace(/\s+\|\s+(BBC News|The Guardian|Sky News|AP News|Al Jazeera|DW|CNBC)$/i, '')
     .trim();
 }
 
@@ -125,12 +129,13 @@ export function extractKeywords(text: string): {
   properNouns: string[];
 } {
   const clean = decodeAndStripHtml(text);
-  const words = clean.match(/[A-Za-z0-9£$€'-]{2,}/g) ?? [];
+  // Split on hyphens too so "Analysis-Spain's" yields clean standalone tokens
+  const words = clean.match(/[A-Za-z0-9£$€']{2,}/g) ?? [];
   const tokenSet = new Set<string>();
   const properSet = new Set<string>();
 
   for (let i = 0; i < words.length; i++) {
-    const raw = words[i].replace(/^['-]+|['-]+$/g, '');
+    const raw = words[i].replace(/^'+|'+$/g, '');
     if (raw.length < 3) continue;
     const lower = raw.toLowerCase();
     if (STOPWORDS.has(lower)) continue;
@@ -139,7 +144,7 @@ export function extractKeywords(text: string): {
 
     // Track capitalized entities / numbers / acronyms for stronger clustering
     if (
-      /^[A-Z][a-zA-Z'-]{2,}$/.test(raw) ||
+      /^[A-Z][a-zA-Z']{2,}$/.test(raw) ||
       /^[A-Z0-9]{2,}$/.test(raw) ||
       /\d/.test(raw)
     ) {
@@ -217,9 +222,15 @@ export function buildSearchQueries(title: string): string[] {
   const focusedTerms = (properNouns.length >= 3 ? properNouns : tokens).slice(0, 5);
   const compactQuery = focusedTerms.join(' ');
 
+  const broadTerms = Array.from(new Set([...properNouns, ...tokens])).slice(0, 4);
+  const broadQuery = broadTerms.join(' ');
+
   const queries = [mainQuery];
   if (compactQuery && compactQuery !== mainQuery) {
     queries.push(compactQuery);
+  }
+  if (broadQuery && !queries.includes(broadQuery)) {
+    queries.push(broadQuery);
   }
   return queries;
 }

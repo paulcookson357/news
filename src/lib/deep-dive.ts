@@ -40,7 +40,12 @@ interface SearchCandidate {
 }
 
 const SCOPED_SITES =
-  'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org OR site:cnbc.com';
+  'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org OR site:cnbc.com OR site:straitstimes.com OR site:politico.eu';
+
+function isInternalPlaceholder(text?: string): boolean {
+  if (!text) return false;
+  return /^Reported by .*Open to search reputable outlets/i.test(text.trim());
+}
 
 async function searchRssEndpoint(
   url: string,
@@ -83,10 +88,18 @@ export async function buildDeepDiveReport(
   const queries = buildSearchQueries(input.title);
   const primaryQuery = queries[0] ?? input.title;
   const compactQuery = queries[1] ?? primaryQuery;
+  const broadQuery = queries[2] ?? compactQuery;
+  const cleanSummary = isInternalPlaceholder(input.summary) ? '' : input.summary;
 
-  const bingGeneralUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
+  const bingPrimaryUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
     primaryQuery
   )}&format=rss`;
+  const bingCompactUrl =
+    compactQuery !== primaryQuery
+      ? `https://www.bing.com/news/search?q=${encodeURIComponent(
+          compactQuery
+        )}&format=rss`
+      : null;
   const bingScopedUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
     `(${SCOPED_SITES}) ${compactQuery}`
   )}&format=rss`;
@@ -95,13 +108,15 @@ export async function buildDeepDiveReport(
   )}&hl=en-GB&gl=GB&ceid=GB:en`;
 
   // Execute live second internet search across multiple free news indices in parallel
-  const [bingGeneralHits, bingScopedHits, googleHits] = await Promise.all([
-    searchRssEndpoint(bingGeneralUrl, true),
-    searchRssEndpoint(bingScopedUrl, true),
-    searchRssEndpoint(googleNewsUrl, false),
-  ]);
+  const [bingPrimaryHits, bingCompactHits, bingScopedHits, googleHits] =
+    await Promise.all([
+      searchRssEndpoint(bingPrimaryUrl, true),
+      bingCompactUrl ? searchRssEndpoint(bingCompactUrl, true) : Promise.resolve([]),
+      searchRssEndpoint(bingScopedUrl, true),
+      searchRssEndpoint(googleNewsUrl, false),
+    ]);
 
-  const storyKeywords = extractKeywords(`${input.title} ${input.summary}`);
+  const storyKeywords = extractKeywords(`${cleanHeadline(input.title)} ${cleanSummary}`);
   const candidateMap = new Map<string, SearchCandidate>();
 
   const MAX_DEEP_DIVE_AGE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -156,6 +171,7 @@ export async function buildDeepDiveReport(
 
   // 1. Seed with the story's original front-page sources
   for (const src of input.sources) {
+    const srcSnippet = isInternalPlaceholder(src.snippet) ? '' : src.snippet ?? cleanSummary;
     registerCandidate(
       {
         name: src.name,
@@ -166,14 +182,14 @@ export async function buildDeepDiveReport(
       src.title,
       src.url,
       src.publishedAt,
-      src.snippet ?? input.summary,
+      srcSnippet,
       1.0
     );
   }
 
   // 2. Add cross-matched articles from our live RSS edition pool
   const existingUrls = new Set(input.sources.map((s) => s.url));
-  const poolMatches = findMatchingPoolArticles(input.title, existingUrls);
+  const poolMatches = findMatchingPoolArticles(cleanHeadline(input.title), existingUrls);
   for (const item of poolMatches) {
     registerCandidate(
       {
@@ -191,7 +207,7 @@ export async function buildDeepDiveReport(
   }
 
   // 3. Process live Bing News RSS hits (reputable domains only)
-  for (const hit of [...bingScopedHits, ...bingGeneralHits]) {
+  for (const hit of [...bingScopedHits, ...bingPrimaryHits, ...bingCompactHits]) {
     const meta = getReputableMeta(hit.url);
     if (!meta) continue;
     registerCandidate(meta, hit.title, hit.url, hit.publishedAt, hit.snippet);
@@ -200,7 +216,7 @@ export async function buildDeepDiveReport(
   // 4. Process live Google News hits if publisher suffix matches a reputable outlet
   for (const hit of googleHits) {
     const match = hit.snippet.match(
-      /(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|Euronews|CBC News|CNBC|Investing\.com|FXStreet)/i
+      /(BBC News|BBC|The Guardian|Sky News|Associated Press|AP News|Reuters|NPR|PBS NewsHour|Al Jazeera|Deutsche Welle|DW|France 24|ABC News|Ars Technica|Euronews|CBC News|CNBC|FXStreet|The Straits Times|Politico|CBS News|NBC News|RTÉ)/i
     );
     if (!match) continue;
     const matchedName = match[1];
@@ -262,23 +278,85 @@ export async function buildDeepDiveReport(
         url: candidate.url,
         publishedAt: candidate.publishedAt,
         paragraphs: [],
-        snippet: candidate.snippet || input.summary,
+        snippet: candidate.snippet || cleanSummary,
         wordCount: fallbackWords,
         fetchStatus: 'snippet' as const,
       };
     })
   );
 
+  // If no source allowed full-text extraction (e.g. Cloudflare/paywall blocks),
+  // run a broader fallback search across reputable free domains.
+  const hasExtractedText = materials.some((m) => m.fetchStatus === 'extracted');
+  if (!hasExtractedText && broadQuery) {
+    const fallbackUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(
+      broadQuery
+    )}&format=rss`;
+    const fallbackHits = await searchRssEndpoint(fallbackUrl, true);
+    const seenUrls = new Set(materials.map((m) => m.url));
+    const extraCandidates: SearchCandidate[] = [];
+
+    for (const hit of fallbackHits) {
+      if (seenUrls.has(hit.url) || !isFactualNewsUrl(hit.url, hit.title)) continue;
+      const meta = getReputableMeta(hit.url);
+      if (!meta) continue;
+      const itemKw = extractKeywords(`${hit.title} ${hit.snippet.slice(0, 120)}`);
+      const sim = computeSimilarity(
+        storyKeywords.tokens,
+        storyKeywords.properNouns,
+        itemKw.tokens,
+        itemKw.properNouns
+      );
+      if (sim < 0.16) continue;
+      seenUrls.add(hit.url);
+      extraCandidates.push({
+        meta,
+        title: hit.title,
+        url: hit.url,
+        publishedAt: hit.publishedAt,
+        snippet: hit.snippet,
+        relevance: sim,
+      });
+      if (extraCandidates.length >= 4) break;
+    }
+
+    if (extraCandidates.length > 0) {
+      const extraMaterials = await Promise.all(
+        extraCandidates.map(async (cand) => {
+          const extracted = await extractArticleText(cand.url);
+          if (extracted && extracted.paragraphs.length > 0) {
+            return {
+              meta: cand.meta,
+              title: cand.title,
+              url: cand.url,
+              publishedAt: cand.publishedAt,
+              paragraphs: extracted.paragraphs,
+              snippet: cand.snippet,
+              wordCount: extracted.wordCount,
+              fetchStatus: 'extracted' as const,
+            };
+          }
+          return null;
+        })
+      );
+      for (const extra of extraMaterials) {
+        if (extra && !materials.some((m) => m.meta.name === extra.meta.name)) {
+          materials.push(extra);
+        }
+      }
+    }
+  }
+
   const { synthesis, sourceDetails } = await synthesizeBroadsheetReport(
-    input.title,
+    cleanHeadline(input.title),
     input.section,
-    input.summary,
+    cleanSummary,
     materials
   );
 
   const article: DeepDiveArticle = {
     id: input.id,
-    title: input.title,
+    title: cleanHeadline(input.title),
     section: input.section,
     standfirst: synthesis.standfirst,
     keyFacts: synthesis.keyFacts,
@@ -287,7 +365,7 @@ export async function buildDeepDiveReport(
     editorialNote: synthesis.editorialNote,
     synthesisMode: synthesis.synthesisMode,
     generatedAt: new Date().toISOString(),
-    searchQueriesUsed: [primaryQuery, compactQuery].filter(
+    searchQueriesUsed: [primaryQuery, compactQuery, broadQuery].filter(
       (q, i, arr) => Boolean(q) && arr.indexOf(q) === i
     ),
   };

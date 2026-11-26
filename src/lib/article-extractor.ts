@@ -137,6 +137,8 @@ export async function extractArticleText(
 
     const selectors = [
       'article [data-component="text-block"] p',
+      '.ArticleBody-articleBody p',
+      '.fxs_article_content p',
       'article .article-body p',
       'article .story-body p',
       'article .wysiwyg p',
