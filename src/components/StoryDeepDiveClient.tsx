@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { SECTION_LABELS } from '@/lib/sources';
 import type { DeepDiveArticle, StorySummary } from '@/lib/types';
+import { DispatchLoadingDesk } from './DispatchLoadingDesk';
 import { Footer } from './Footer';
 import { formatStoryTime } from './StoryCard';
 
@@ -241,25 +242,7 @@ export function StoryDeepDiveClient({
         </div>
 
         {/* Loading State During Live Second Search */}
-        {loading && (
-          <div className="my-10 border border-[#D4CCC0] bg-[#EFEAE0]/60 p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <RefreshCw className="h-5 w-5 animate-spin text-[#8B1E24] shrink-0 mt-0.5" />
-              <div>
-                <h2 className="font-display text-xl font-bold text-[#141413]">
-                  Searching reputable internet sources for corroborating
-                  reporting…
-                </h2>
-                <p className="mt-2 font-editorial text-base text-[#5C574F]">
-                  The Meridian is querying free news indices across BBC News,
-                  The Guardian, Associated Press, Sky News, CNBC, Deutsche
-                  Welle, France 24, NPR, and Al Jazeera, extracting full article
-                  text, and assembling an expanded broadsheet report.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {loading && <DispatchLoadingDesk story={story} />}
 
         {/* Error State */}
         {error && !loading && (

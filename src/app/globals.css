@@ -56,3 +56,30 @@ body {
   padding-top: 0.14rem;
   color: #141413;
 }
+
+@keyframes press-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.animate-press-sweep {
+  animation: press-sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes type-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.animate-type-pulse {
+  animation: type-pulse 1.6s ease-in-out infinite;
+}

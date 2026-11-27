@@ -34,7 +34,7 @@ export default function StoryPage({
     <Suspense
       fallback={
         <div className="min-h-screen bg-[#F7F4EE] px-4 sm:px-6 lg:px-8 py-12">
-          <div className="mx-auto max-w-[1440px]">
+          <div className="mx-auto max-w-[1160px]">
             <p className="font-display text-2xl font-bold text-[#141413]">
               THE MERIDIAN
             </p>
