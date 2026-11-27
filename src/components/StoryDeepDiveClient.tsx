@@ -72,7 +72,7 @@ export function StoryDeepDiveClient({
         setArticle(data.article);
         try {
           window.localStorage.setItem(
-            `meridian_deepdive_v3_${storyId}`,
+            `meridian_deepdive_v4_${storyId}`,
             JSON.stringify(data.article)
           );
         } catch {
@@ -112,7 +112,7 @@ export function StoryDeepDiveClient({
         }
 
         const storedDive = window.localStorage.getItem(
-          `meridian_deepdive_v3_${storyId}`
+          `meridian_deepdive_v4_${storyId}`
         );
         if (storedDive) {
           const cachedDive = JSON.parse(storedDive) as DeepDiveArticle;

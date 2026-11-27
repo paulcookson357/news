@@ -278,6 +278,20 @@ function synthesizeWithAlgorithms(
   };
 }
 
+const DEFAULT_GEMINI_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-flash-lite-latest',
+];
+
+function extractJsonText(raw: string): string {
+  return raw
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+}
+
 async function synthesizeWithGemini(
   headline: string,
   section: StoryCategory,
@@ -287,33 +301,40 @@ async function synthesizeWithGemini(
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) return null;
 
+  const customModel = process.env.GEMINI_MODEL?.trim();
+  const modelsToTry = customModel
+    ? Array.from(new Set([customModel, ...DEFAULT_GEMINI_MODELS]))
+    : DEFAULT_GEMINI_MODELS;
+
   const sourceDossiers = materials
     .map((m, idx) => {
       const body =
         m.paragraphs.length > 0
-          ? m.paragraphs.slice(0, 10).join('\n\n')
+          ? m.paragraphs.slice(0, 14).join('\n\n')
           : m.snippet || m.title;
-      return `[SOURCE ${idx + 1}: ${m.meta.name} | Region: ${m.meta.region} | Published: ${m.publishedAt}]\nHeadline: ${m.title}\nExcerpt/Text:\n${body}`;
+      return `[SOURCE ${idx + 1}: ${m.meta.name} | Region: ${m.meta.region} | Published: ${m.publishedAt}]\nHeadline: ${m.title}\nReport:\n${body}`;
     })
     .join('\n\n---\n\n');
 
-  const prompt = `You are a senior broadsheet journalist writing for The Meridian (a non-partisan, factual UK & International newspaper).
-Write an expanded, balanced, strictly factual news article on the story below using ONLY the provided source material.
+  const prompt = `You are a senior newsroom writer at The Meridian, a respected UK & International broadsheet newspaper in the mould of The Times and Financial Times.
+Transform the verified source reporting below into a polished, cohesive, authoritative newspaper article.
 
-RULES:
-1. Write as a single, seamless, authoritative standard news article in crisp inverted-pyramid broadsheet prose (British English spelling preferred where natural).
-2. Do NOT attribute facts or statements to news outlets inside the article prose or key facts (never write "According to BBC News...", "The Guardian reported...", "CNBC noted...", etc.). All consulted outlets are referenced in a dedicated section below the article.
-3. Do NOT write a collection of quotes. Synthesize reported statements and figures into natural third-person narrative prose; use at most one brief direct quote only if essential to the story.
-4. Reconcile timestamps across sources so the story consistently reflects the latest verified facts without contradicting itself.
-5. Remain strictly neutral, objective, and factual. Do not invent facts, numbers, quotes, or dates not present in the sources.
-6. Return ONLY valid JSON matching this exact schema:
+EDITORIAL STANDARDS:
+1. Write crisp, engaging, standard broadsheet journalism in fluent narrative prose (natural British English spelling where appropriate). Open with a sharp inverted-pyramid lead paragraph that establishes the core news clearly and draws the reader in.
+2. Pace the story cleanly into clear narrative paragraphs with smooth transitions between facts, context, and consequences. Aim for 450–750 words total when rich source reporting is available, or proportionally tighter if the supplied source material is brief.
+3. NEVER invent facts, figures, dates, reactions, or quotes that do not appear in the provided source material.
+4. NEVER attribute statements or facts to news outlets inside the headline, standfirst, key facts, or article paragraphs (never write "according to BBC News", "The Guardian reported", "CNBC noted", etc.). Sources are credited separately below the article.
+5. Do NOT write a stacked list of quotes. Weave official statements and figures naturally into third-person reporting, using at most one or two brief direct quotes only where they carry genuine weight.
+6. Reconcile timestamps carefully so earlier figures or developing details do not contradict the latest verified reporting.
+7. Maintain an impartial, understated, non-sensationalist broadsheet tone—avoid dramatic cliches like "In a stunning turn of events" or "It remains to be seen".
+8. Return ONLY valid JSON matching this exact schema:
 {
-  "standfirst": "A concise 1-2 sentence factual deck summarizing the story.",
-  "keyFacts": ["3 to 4 concise verified bullet facts with NO outlet names in parentheses"],
+  "standfirst": "A crisp 1-2 sentence broadsheet deck summarizing the core story and why it matters.",
+  "keyFacts": ["3 to 4 concise, verified bullet facts with zero outlet names"],
   "sections": [
-    { "heading": "Lead Story", "paragraphs": ["3-4 cohesive narrative opening paragraphs"] },
-    { "heading": "Key Developments", "paragraphs": ["2-3 narrative paragraphs covering details and impacts"] },
-    { "heading": "Background & Context", "paragraphs": ["1-2 paragraphs of factual background"] }
+    { "heading": "Lead Story", "paragraphs": ["3-4 polished opening narrative paragraphs"] },
+    { "heading": "Key Developments", "paragraphs": ["2-3 fluid narrative paragraphs covering details, figures, and reactions"] },
+    { "heading": "Background & Context", "paragraphs": ["1-2 paragraphs of essential context and wider significance"] }
   ],
   "editorialNote": "One brief neutral sentence noting this report was compiled from the independent sources referenced below."
 }
@@ -325,69 +346,109 @@ Front-page summary: ${summary}
 VERIFIED SOURCE MATERIAL:
 ${sourceDossiers}`;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
-        apiKey
-      )}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          },
-        }),
-        signal: AbortSignal.timeout(18000),
+  for (const model of modelsToTry) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          model
+        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.25,
+              maxOutputTokens: 2800,
+              responseMimeType: 'application/json',
+            },
+          }),
+          signal: AbortSignal.timeout(14000),
+        }
+      );
+
+      if (!res.ok) {
+        if (
+          res.status === 404 ||
+          res.status === 429 ||
+          res.status === 503 ||
+          res.status >= 500
+        ) {
+          console.warn(
+            `Gemini model ${model} returned HTTP ${res.status}; trying fallback`
+          );
+          continue;
+        }
+        return null;
       }
-    );
 
-    if (!res.ok) return null;
-    const payload = (await res.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-      }>;
-    };
+      const payload = (await res.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+        }>;
+      };
 
-    const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) return null;
+      const parts = payload.candidates?.[0]?.content?.parts ?? [];
+      const rawText = [...parts]
+        .reverse()
+        .find((p) => typeof p.text === 'string' && !p.thought)?.text;
+      if (!rawText) continue;
 
-    const parsed = JSON.parse(rawText) as Partial<SynthesisOutput>;
-    if (
-      typeof parsed.standfirst !== 'string' ||
-      !Array.isArray(parsed.keyFacts) ||
-      !Array.isArray(parsed.sections) ||
-      parsed.sections.length === 0
-    ) {
-      return null;
-    }
+      const parsed = JSON.parse(
+        extractJsonText(rawText)
+      ) as Partial<SynthesisOutput>;
+      if (
+        typeof parsed.standfirst !== 'string' ||
+        !Array.isArray(parsed.keyFacts) ||
+        !Array.isArray(parsed.sections) ||
+        parsed.sections.length === 0
+      ) {
+        continue;
+      }
 
-    const validSections = parsed.sections.filter(
-      (sec) =>
-        sec &&
-        typeof sec.heading === 'string' &&
-        Array.isArray(sec.paragraphs) &&
-        sec.paragraphs.length > 0
-    );
-    if (validSections.length === 0) return null;
+      const validSections = parsed.sections
+        .filter(
+          (sec) =>
+            sec &&
+            typeof sec.heading === 'string' &&
+            Array.isArray(sec.paragraphs) &&
+            sec.paragraphs.length > 0
+        )
+        .map((sec) => ({
+          heading: sec.heading.trim(),
+          paragraphs: sec.paragraphs
+            .filter((p): p is string => typeof p === 'string')
+            .map((p) => stripOutletSelfReferences(p))
+            .filter((p) => p.length > 0),
+        }))
+        .filter((sec) => sec.paragraphs.length > 0);
 
-    return {
-      standfirst: parsed.standfirst,
-      keyFacts: parsed.keyFacts
+      if (validSections.length === 0) continue;
+
+      const cleanStandfirst = stripOutletSelfReferences(parsed.standfirst);
+      const cleanFacts = parsed.keyFacts
         .filter((f): f is string => typeof f === 'string')
-        .slice(0, 5),
-      sections: validSections,
-      editorialNote:
-        typeof parsed.editorialNote === 'string'
-          ? parsed.editorialNote
-          : `Compiled from ${materials.length} independent news sources referenced below.`,
-      synthesisMode: 'ai',
-    };
-  } catch {
-    return null;
+        .map((f) => stripOutletSelfReferences(f))
+        .filter((f) => f.length > 0)
+        .slice(0, 5);
+
+      return {
+        standfirst: cleanStandfirst || parsed.standfirst,
+        keyFacts: cleanFacts,
+        sections: validSections,
+        editorialNote:
+          typeof parsed.editorialNote === 'string' &&
+          parsed.editorialNote.trim().length > 0
+            ? parsed.editorialNote.trim()
+            : `Compiled from ${materials.length} independent news sources referenced below.`,
+        synthesisMode: 'ai',
+      };
+    } catch (err) {
+      console.warn(`Gemini model ${model} synthesis attempt failed:`, err);
+    }
   }
+
+  return null;
 }
 
 export async function synthesizeBroadsheetReport(
