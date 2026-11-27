@@ -192,9 +192,9 @@ export function Masthead({
     <header className="w-full bg-[#F7F4EE]">
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
         {/* Top Utility Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#D4CCC0] py-2.5 font-ui text-[11px] uppercase tracking-[0.1em] text-[#5C574F]">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div ref={pickerRef} className="relative">
+        <div className="flex items-center justify-between gap-3 border-b border-[#D4CCC0] py-2.5 font-ui text-[11px] uppercase tracking-[0.1em] text-[#5C574F]">
+          <div className="flex items-center gap-x-3 min-w-0 flex-1">
+            <div ref={pickerRef} className="relative min-w-0">
               <button
                 type="button"
                 onClick={() => {
@@ -209,16 +209,15 @@ export function Masthead({
                 aria-expanded={pickerOpen}
                 aria-haspopup="dialog"
                 aria-label="Select date and edition from archive"
-                className="group inline-flex cursor-pointer items-center gap-1.5 text-left transition-colors hover:text-[#8B1E24] disabled:cursor-default disabled:hover:text-[#5C574F]"
+                className="group flex flex-wrap cursor-pointer items-center gap-x-1.5 gap-y-0.5 text-left transition-colors hover:text-[#8B1E24] disabled:cursor-default disabled:hover:text-[#5C574F]"
               >
                 <span className="font-semibold text-[#141413] group-hover:text-[#8B1E24] transition-colors">
                   {editionDate}
                 </span>
-                <span className="hidden sm:inline text-[#D4CCC0]">|</span>
-                <span className="hidden sm:inline">
-                  UK &amp; International · {slotLabel}
-                </span>
-                <span className="sm:hidden">· {slotLabel}</span>
+                <span className="hidden xl:inline text-[#D4CCC0]">|</span>
+                <span className="hidden xl:inline">UK &amp; International</span>
+                <span className="text-[#D4CCC0]">·</span>
+                <span>{slotLabel}</span>
                 {isViewingArchive && (
                   <span className="ml-1 border border-[#8B1E24]/35 bg-[#8B1E24]/8 px-1.5 py-0.5 text-[9px] font-semibold text-[#8B1E24]">
                     Archive
@@ -226,7 +225,7 @@ export function Masthead({
                 )}
                 {hasArchiveOptions && (
                   <ChevronDown
-                    className={`h-3.5 w-3.5 text-[#5C574F] group-hover:text-[#8B1E24] transition-transform ${
+                    className={`h-3.5 w-3.5 shrink-0 text-[#5C574F] group-hover:text-[#8B1E24] transition-transform ${
                       pickerOpen ? 'rotate-180' : ''
                     }`}
                   />
@@ -351,10 +350,12 @@ export function Masthead({
               )}
             </div>
 
-            <span className="hidden lg:inline text-[#D4CCC0]">|</span>
-            <span className="hidden lg:inline">
-              Updated {formatUpdatedTime(updatedAt)} · {sourcesSucceeded}/
-              {sourcesChecked} Wires Active
+            <span className="hidden lg:inline-flex items-center gap-3 shrink-0">
+              <span className="text-[#D4CCC0]">|</span>
+              <span>
+                Updated {formatUpdatedTime(updatedAt)} · {sourcesSucceeded}/
+                {sourcesChecked} Wires Active
+              </span>
             </span>
           </div>
 
@@ -363,7 +364,7 @@ export function Masthead({
             onClick={onUpdateNews}
             disabled={isUpdating || isLoadingEdition}
             aria-label="Update news from internet sources"
-            className="inline-flex cursor-pointer items-center gap-2 border border-[#141413] bg-[#141413] px-3.5 py-1.5 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-[#F7F4EE] transition-colors hover:bg-[#8B1E24] hover:border-[#8B1E24] disabled:cursor-wait disabled:opacity-70"
+            className="shrink-0 inline-flex cursor-pointer items-center gap-2 border border-[#141413] bg-[#141413] px-3 sm:px-3.5 py-1.5 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-[#F7F4EE] transition-colors hover:bg-[#8B1E24] hover:border-[#8B1E24] disabled:cursor-wait disabled:opacity-70"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${isUpdating ? 'animate-spin' : ''}`}

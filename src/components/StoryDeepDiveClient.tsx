@@ -156,7 +156,7 @@ export function StoryDeepDiveClient({
     <div className="min-h-screen flex flex-col bg-[#F7F4EE]">
       {/* Compact Masthead Bar */}
       <header className="border-b border-[#D4CCC0] bg-[#F7F4EE]">
-        <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1160px] px-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3 py-3">
             <Link
               href="/"
@@ -188,7 +188,7 @@ export function StoryDeepDiveClient({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 py-6">
+      <main className="mx-auto w-full max-w-[1160px] flex-1 px-4 sm:px-6 lg:px-8 py-6">
         {/* Story Header */}
         <div className="border-b-[3px] border-double border-[#2C2925] pb-6">
           <div className="flex flex-wrap items-center gap-2.5 font-ui text-[11px] uppercase tracking-[0.14em]">
@@ -204,12 +204,12 @@ export function StoryDeepDiveClient({
             )}
           </div>
 
-          <h1 className="mt-3 font-display text-3xl sm:text-4xl lg:text-[2.85rem] font-bold leading-[1.12] tracking-[-0.015em] text-[#141413] max-w-4xl">
+          <h1 className="mt-3 font-display text-3xl sm:text-4xl lg:text-[2.75rem] font-bold leading-[1.12] tracking-[-0.015em] text-[#141413]">
             {displayTitle}
           </h1>
 
           {(article?.standfirst || story?.summary) && (
-            <p className="mt-4 font-editorial italic text-lg sm:text-xl leading-relaxed text-[#3B3832] max-w-3xl">
+            <p className="mt-4 font-editorial italic text-lg sm:text-xl leading-relaxed text-[#3B3832] max-w-4xl">
               {article?.standfirst || story?.summary}
             </p>
           )}
@@ -291,10 +291,10 @@ export function StoryDeepDiveClient({
         {/* Expanded Report Body + Key Facts Rail + Sources Referenced Below */}
         {article && !loading && (
           <>
-            <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-0">
               {/* Main Editorial Column */}
-              <div className="lg:col-span-8">
-                <div className="max-w-[68ch] space-y-8">
+              <div className="lg:col-span-8 lg:pr-8">
+                <div className="space-y-8">
                   {article.sections.map((section, secIdx) => (
                     <section key={section.heading}>
                       {secIdx > 0 && (
@@ -322,7 +322,7 @@ export function StoryDeepDiveClient({
               </div>
 
               {/* Right Rail: Key Facts */}
-              <aside className="lg:col-span-4 lg:border-l lg:border-[#D4CCC0] lg:pl-7">
+              <aside className="lg:col-span-4 lg:border-l lg:border-[#D4CCC0] lg:pl-8">
                 <div className="border-t-2 border-[#141413] pt-3">
                   <h2 className="font-ui text-[11px] font-bold uppercase tracking-[0.14em] text-[#141413] flex items-center gap-2">
                     <BookOpenCheck className="h-3.5 w-3.5 text-[#8B1E24]" />
