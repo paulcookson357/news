@@ -240,10 +240,9 @@ export function StoryDeepDiveClient({
                 </h2>
                 <p className="mt-2 font-editorial text-base text-[#5C574F]">
                   The Meridian is querying free news indices across BBC News,
-                  The Guardian, Associated Press, Sky News, CNBC, Investing.com,
-                  FXStreet, Deutsche Welle, France 24, NPR, and Al Jazeera,
-                  extracting full article text, and assembling an expanded
-                  broadsheet report.
+                  The Guardian, Associated Press, Sky News, CNBC, Deutsche
+                  Welle, France 24, NPR, and Al Jazeera, extracting full article
+                  text, and assembling an expanded broadsheet report.
                 </p>
               </div>
             </div>

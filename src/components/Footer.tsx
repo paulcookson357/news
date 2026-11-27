@@ -11,7 +11,6 @@ const REPUTABLE_SOURCE_LIST = [
   'ABC News (AU)',
   'Ars Technica',
   'CNBC',
-  'FXStreet',
 ];
 
 export function Footer() {

@@ -136,12 +136,6 @@ export const REPUTABLE_DOMAINS: Record<string, SourceMeta> = {
     region: 'United States / Global',
     type: 'Financial & Markets Desk',
   },
-  'fxstreet.com': {
-    name: 'FXStreet',
-    domain: 'fxstreet.com',
-    region: 'International',
-    type: 'FX & Macro Desk',
-  },
   'straitstimes.com': {
     name: 'The Straits Times',
     domain: 'straitstimes.com',
@@ -368,14 +362,6 @@ export const RSS_FEEDS: FeedConfig[] = [
     type: 'Financial & Markets Desk',
     section: 'world',
     url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362',
-  },
-  {
-    name: 'FXStreet',
-    domain: 'fxstreet.com',
-    region: 'International',
-    type: 'FX & Macro Desk',
-    section: 'business',
-    url: 'https://www.fxstreet.com/rss/news',
   },
 
   // Science & Technology
