@@ -55,7 +55,10 @@ export async function POST(request: Request) {
   try {
     const previous = await loadEdition();
     const previousIds = new Set(previous?.stories.map((s) => s.id) ?? []);
-    const { edition, stats } = await fetchLatestEdition(previousIds);
+    const { edition, stats } = await fetchLatestEdition(
+      previousIds,
+      slot === 'scheduled' ? undefined : slot
+    );
     revalidatePath('/');
 
     return NextResponse.json({

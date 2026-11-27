@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildDeepDiveReport, type DeepDiveInput } from '@/lib/deep-dive';
-import { loadStoryById } from '@/lib/storage';
+import { loadDeepDive, loadStoryById } from '@/lib/storage';
 import type { StoryCategory, StorySource } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -25,6 +25,13 @@ export async function POST(request: Request) {
         { error: 'Missing story identifier.' },
         { status: 400 }
       );
+    }
+
+    if (!body.forceRefresh) {
+      const existing = await loadDeepDive(id);
+      if (existing) {
+        return NextResponse.json({ article: existing, cached: true });
+      }
     }
 
     const cachedStory = await loadStoryById(id);

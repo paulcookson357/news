@@ -1,5 +1,6 @@
 export type StoryCategory = 'uk' | 'world' | 'business' | 'tech' | 'environment';
 export type NewsSection = 'front' | StoryCategory;
+export type EditionSlot = 'morning' | 'midday' | 'evening';
 
 export interface SourceMeta {
   name: string;
@@ -42,12 +43,26 @@ export interface RawArticle extends SourceMeta {
 }
 
 export interface Edition {
+  id?: string;
   updatedAt: string;
   editionDate: string;
+  editionDay?: string;
+  editionSlot?: EditionSlot;
   stories: StorySummary[];
   sourcesChecked: number;
   sourcesSucceeded: number;
   activeSourceNames: string[];
+}
+
+export interface EditionArchiveItem {
+  id: string;
+  editionDay: string;
+  editionDate: string;
+  editionSlot: EditionSlot;
+  updatedAt: string;
+  sourcesChecked: number;
+  sourcesSucceeded: number;
+  storyCount: number;
 }
 
 export interface UpdateStats {

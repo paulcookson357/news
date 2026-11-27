@@ -42,6 +42,8 @@ interface SearchCandidate {
 const SCOPED_SITES =
   'site:bbc.co.uk OR site:theguardian.com OR site:apnews.com OR site:npr.org OR site:aljazeera.com OR site:dw.com OR site:france24.com OR site:news.sky.com OR site:pbs.org OR site:cnbc.com OR site:straitstimes.com OR site:politico.eu';
 
+const inFlightDeepDives = new Map<string, Promise<DeepDiveArticle>>();
+
 function isInternalPlaceholder(text?: string): boolean {
   if (!text) return false;
   return /^Reported by .*Open to search reputable outlets/i.test(text.trim());
@@ -83,7 +85,25 @@ export async function buildDeepDiveReport(
   if (!forceRefresh) {
     const cached = await loadDeepDive(input.id);
     if (cached) return cached;
+
+    const existingPromise = inFlightDeepDives.get(input.id);
+    if (existingPromise) return existingPromise;
   }
+
+  const runPromise = generateAndPersistDeepDive(input).finally(() => {
+    inFlightDeepDives.delete(input.id);
+  });
+
+  if (!forceRefresh) {
+    inFlightDeepDives.set(input.id, runPromise);
+  }
+
+  return runPromise;
+}
+
+async function generateAndPersistDeepDive(
+  input: DeepDiveInput
+): Promise<DeepDiveArticle> {
 
   const queries = buildSearchQueries(input.title);
   const primaryQuery = queries[0] ?? input.title;

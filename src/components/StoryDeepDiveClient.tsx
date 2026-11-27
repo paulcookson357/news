@@ -92,6 +92,18 @@ export function StoryDeepDiveClient({
   );
 
   useEffect(() => {
+    if (!initialArticle) return;
+    try {
+      window.localStorage.setItem(
+        `meridian_deepdive_v4_${storyId}`,
+        JSON.stringify(initialArticle)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  }, [initialArticle, storyId]);
+
+  useEffect(() => {
     if (initialArticle) return;
     let cancelled = false;
 

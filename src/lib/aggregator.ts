@@ -16,6 +16,7 @@ import {
 } from './text-utils';
 import type {
   Edition,
+  EditionSlot,
   RawArticle,
   StoryCategory,
   StorySource,
@@ -714,8 +715,25 @@ async function enrichFeaturedStoryImages(stories: StorySummary[]): Promise<void>
   );
 }
 
+export function resolveEditionSlotInfo(
+  date: Date,
+  explicitSlot?: EditionSlot
+): { id: string; editionDay: string; editionSlot: EditionSlot } {
+  const editionDay = date.toISOString().slice(0, 10);
+  const mins = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const inferredSlot: EditionSlot =
+    mins < 11 * 60 + 30 ? 'morning' : mins < 17 * 60 ? 'midday' : 'evening';
+  const editionSlot = explicitSlot ?? inferredSlot;
+  return {
+    id: `${editionDay}_${editionSlot}`,
+    editionDay,
+    editionSlot,
+  };
+}
+
 export async function fetchLatestEdition(
-  previousIds?: Set<string>
+  previousIds?: Set<string>,
+  explicitSlot?: EditionSlot
 ): Promise<{ edition: Edition; stats: UpdateStats }> {
   const start = Date.now();
   const settled = await Promise.allSettled(
@@ -741,9 +759,13 @@ export async function fetchLatestEdition(
   await enrichFeaturedStoryImages(curated);
 
   const now = new Date();
+  const slotInfo = resolveEditionSlotInfo(now, explicitSlot);
   const edition: Edition = {
+    id: slotInfo.id,
     updatedAt: now.toISOString(),
     editionDate: formatEditionDate(now),
+    editionDay: slotInfo.editionDay,
+    editionSlot: slotInfo.editionSlot,
     stories: curated,
     sourcesChecked: RSS_FEEDS.length,
     sourcesSucceeded,

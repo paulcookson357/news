@@ -2,16 +2,37 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { FrontPageClient } from '@/components/FrontPageClient';
 import { fetchLatestEdition } from '@/lib/aggregator';
-import { loadEdition } from '@/lib/storage';
+import { listEditionArchive, loadEdition } from '@/lib/storage';
 
-async function LiveFrontPage() {
+async function LiveFrontPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edition?: string }>;
+}) {
   await connection();
-  let edition = await loadEdition();
+  const resolvedParams = await searchParams;
+  const requestedId = resolvedParams.edition?.trim() || undefined;
+
+  const [loaded, archive] = await Promise.all([
+    loadEdition(requestedId),
+    listEditionArchive(),
+  ]);
+
+  let edition = loaded;
+  if ((!edition || edition.stories.length === 0) && requestedId) {
+    edition = await loadEdition();
+  }
+
+  let initialArchive = archive;
   if (!edition || edition.stories.length === 0) {
     const result = await fetchLatestEdition();
     edition = result.edition;
+    initialArchive = await listEditionArchive();
   }
-  return <FrontPageClient initialEdition={edition} />;
+
+  return (
+    <FrontPageClient initialEdition={edition} initialArchive={initialArchive} />
+  );
 }
 
 function FrontPageLoadingShell() {
@@ -48,10 +69,14 @@ function FrontPageLoadingShell() {
   );
 }
 
-export default function HomePage() {
+export default function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edition?: string }>;
+}) {
   return (
     <Suspense fallback={<FrontPageLoadingShell />}>
-      <LiveFrontPage />
+      <LiveFrontPage searchParams={searchParams} />
     </Suspense>
   );
 }

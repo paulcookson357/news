@@ -5,6 +5,8 @@ import type {
   DeepDiveSection,
   DeepDiveSourceDetail,
   Edition,
+  EditionArchiveItem,
+  EditionSlot,
   RawArticle,
   StoryCategory,
   StorySource,
@@ -126,10 +128,67 @@ interface SupabaseEditionRow {
   id: string;
   updated_at: string;
   edition_date: string;
+  edition_day?: string | null;
+  edition_slot?: EditionSlot | null;
   sources_checked: number;
   sources_succeeded: number;
   active_source_names: string[];
   story_ids: string[];
+}
+
+function normalizeEditionSlot(raw: unknown): EditionSlot | null {
+  if (raw === 'morning' || raw === 'midday' || raw === 'evening') {
+    return raw;
+  }
+  return null;
+}
+
+function deriveDayAndSlot(
+  updatedAt: string,
+  explicitDay?: string | null,
+  explicitSlot?: string | null
+): { editionDay: string; editionSlot: EditionSlot } {
+  const parsed = new Date(updatedAt);
+  const validDate = !Number.isNaN(parsed.getTime());
+  const editionDay =
+    explicitDay && /^\d{4}-\d{2}-\d{2}$/.test(explicitDay)
+      ? explicitDay
+      : validDate
+        ? parsed.toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+
+  const normalizedSlot = normalizeEditionSlot(explicitSlot);
+  if (normalizedSlot) {
+    return { editionDay, editionSlot: normalizedSlot };
+  }
+
+  const mins = validDate ? parsed.getUTCHours() * 60 + parsed.getUTCMinutes() : 12 * 60;
+  const editionSlot: EditionSlot =
+    mins < 11 * 60 + 30 ? 'morning' : mins < 17 * 60 ? 'midday' : 'evening';
+  return { editionDay, editionSlot };
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 8000
+): Promise<Response> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+      cache: 'no-store',
+    });
+    if (res.status < 500) return res;
+  } catch {
+    // Fall through to single retry
+  }
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(timeoutMs),
+    cache: 'no-store',
+  });
 }
 
 interface SupabaseStoryRow {
@@ -192,26 +251,31 @@ function mapDeepDiveRow(row: SupabaseDeepDiveRow): DeepDiveArticle {
   };
 }
 
-export async function loadEdition(): Promise<Edition | null> {
+export async function loadEdition(editionId?: string): Promise<Edition | null> {
   const store = getStore();
-  if (store.edition && store.edition.stories.length > 0) {
+  if (!editionId && store.edition && store.edition.stories.length > 0) {
     const ageMs = Date.now() - Date.parse(store.edition.updatedAt);
     if (!Number.isNaN(ageMs) && ageMs < EDITION_MEMORY_TTL_MS) {
       return store.edition;
     }
   }
 
+  if (editionId && store.edition?.id === editionId && store.edition.stories.length > 0) {
+    return store.edition;
+  }
+
   const cfg = getSupabaseConfig();
   if (cfg) {
     try {
-      const editionRes = await fetch(
-        `${cfg.url}/rest/v1/meridian_editions?select=id,updated_at,edition_date,sources_checked,sources_succeeded,active_source_names,story_ids&order=updated_at.desc&limit=1`,
-        {
-          headers: buildSupabaseHeaders(cfg.key),
-          signal: AbortSignal.timeout(5500),
-          cache: 'no-store',
-        }
-      );
+      const editionQuery = editionId
+        ? `${cfg.url}/rest/v1/meridian_editions?select=id,updated_at,edition_date,edition_day,edition_slot,sources_checked,sources_succeeded,active_source_names,story_ids&id=eq.${encodeURIComponent(
+            editionId
+          )}&limit=1`
+        : `${cfg.url}/rest/v1/meridian_editions?select=id,updated_at,edition_date,edition_day,edition_slot,sources_checked,sources_succeeded,active_source_names,story_ids&order=updated_at.desc&limit=1`;
+
+      const editionRes = await fetchWithRetry(editionQuery, {
+        headers: buildSupabaseHeaders(cfg.key),
+      });
 
       if (editionRes.ok) {
         const rows = (await editionRes.json()) as SupabaseEditionRow[];
@@ -220,14 +284,12 @@ export async function loadEdition(): Promise<Edition | null> {
           const idFilter = latest.story_ids
             .map((id) => `"${id.replace(/"/g, '')}"`)
             .join(',');
-          const storiesRes = await fetch(
+          const storiesRes = await fetchWithRetry(
             `${cfg.url}/rest/v1/meridian_stories?select=id,title,summary,section,published_at,primary_source,score,sources,image_url,image_source&id=in.(${encodeURIComponent(
               idFilter
             )})`,
             {
               headers: buildSupabaseHeaders(cfg.key),
-              signal: AbortSignal.timeout(5500),
-              cache: 'no-store',
             }
           );
 
@@ -239,16 +301,26 @@ export async function loadEdition(): Promise<Edition | null> {
               .filter((s): s is StorySummary => Boolean(s));
 
             if (orderedStories.length > 0) {
+              const { editionDay, editionSlot } = deriveDayAndSlot(
+                latest.updated_at,
+                latest.edition_day,
+                latest.edition_slot
+              );
               const edition: Edition = {
+                id: latest.id,
                 updatedAt: latest.updated_at,
                 editionDate: latest.edition_date,
+                editionDay,
+                editionSlot,
                 stories: orderedStories,
                 sourcesChecked: latest.sources_checked,
                 sourcesSucceeded: latest.sources_succeeded,
                 activeSourceNames: latest.active_source_names ?? [],
               };
-              store.edition = edition;
-              persistStore(store);
+              if (!editionId) {
+                store.edition = edition;
+                persistStore(store);
+              }
               return edition;
             }
           }
@@ -259,7 +331,93 @@ export async function loadEdition(): Promise<Edition | null> {
     }
   }
 
-  return store.edition;
+  return editionId ? null : store.edition;
+}
+
+const SLOT_SORT_WEIGHT: Record<EditionSlot, number> = {
+  evening: 3,
+  midday: 2,
+  morning: 1,
+};
+
+export async function listEditionArchive(): Promise<EditionArchiveItem[]> {
+  const store = getStore();
+  const cfg = getSupabaseConfig();
+
+  if (cfg) {
+    try {
+      const res = await fetchWithRetry(
+        `${cfg.url}/rest/v1/meridian_editions?select=id,updated_at,edition_date,edition_day,edition_slot,sources_checked,sources_succeeded,story_ids&order=updated_at.desc&limit=60`,
+        {
+          headers: buildSupabaseHeaders(cfg.key),
+        }
+      );
+
+      if (res.ok) {
+        const rows = (await res.json()) as SupabaseEditionRow[];
+        const seenDaySlot = new Set<string>();
+        const items: EditionArchiveItem[] = [];
+
+        for (const row of rows) {
+          if (!Array.isArray(row.story_ids) || row.story_ids.length === 0) {
+            continue;
+          }
+          const { editionDay, editionSlot } = deriveDayAndSlot(
+            row.updated_at,
+            row.edition_day,
+            row.edition_slot
+          );
+          const key = `${editionDay}_${editionSlot}`;
+          if (seenDaySlot.has(key)) continue;
+          seenDaySlot.add(key);
+
+          items.push({
+            id: row.id,
+            editionDay,
+            editionDate: row.edition_date,
+            editionSlot,
+            updatedAt: row.updated_at,
+            sourcesChecked: row.sources_checked,
+            sourcesSucceeded: row.sources_succeeded,
+            storyCount: row.story_ids.length,
+          });
+        }
+
+        items.sort((a, b) => {
+          if (a.editionDay !== b.editionDay) {
+            return b.editionDay.localeCompare(a.editionDay);
+          }
+          return SLOT_SORT_WEIGHT[b.editionSlot] - SLOT_SORT_WEIGHT[a.editionSlot];
+        });
+
+        if (items.length > 0) return items;
+      }
+    } catch {
+      // Fall through to local fallback
+    }
+  }
+
+  if (store.edition) {
+    const { editionDay, editionSlot } = deriveDayAndSlot(
+      store.edition.updatedAt,
+      store.edition.editionDay,
+      store.edition.editionSlot
+    );
+    return [
+      {
+        id: store.edition.id ?? store.edition.updatedAt,
+        editionDay,
+        editionDate: store.edition.editionDate,
+        editionSlot,
+        updatedAt: store.edition.updatedAt,
+        sourcesChecked: store.edition.sourcesChecked,
+        sourcesSucceeded: store.edition.sourcesSucceeded,
+        storyCount: store.edition.stories.length,
+      },
+    ];
+  }
+
+  return [];
 }
 
 export async function saveEdition(
@@ -276,15 +434,22 @@ export async function saveEdition(
   const cfg = getSupabaseConfig();
   if (cfg && cfg.writeSecret) {
     try {
-      await fetch(`${cfg.url}/rest/v1/rpc/save_meridian_edition`, {
+      const { editionDay, editionSlot } = deriveDayAndSlot(
+        edition.updatedAt,
+        edition.editionDay,
+        edition.editionSlot
+      );
+      await fetchWithRetry(`${cfg.url}/rest/v1/rpc/save_meridian_edition`, {
         method: 'POST',
         headers: buildSupabaseHeaders(cfg.key, true),
         body: JSON.stringify({
           p_secret: cfg.writeSecret,
           p_edition: {
-            id: edition.updatedAt,
+            id: edition.id ?? edition.updatedAt,
             updatedAt: edition.updatedAt,
             editionDate: edition.editionDate,
+            editionDay,
+            editionSlot,
             sourcesChecked: edition.sourcesChecked,
             sourcesSucceeded: edition.sourcesSucceeded,
             activeSourceNames: edition.activeSourceNames,
@@ -292,7 +457,6 @@ export async function saveEdition(
           },
           p_stories: edition.stories,
         }),
-        signal: AbortSignal.timeout(8000),
       });
     } catch (err) {
       console.error('Supabase saveEdition warning:', err);
@@ -347,14 +511,12 @@ export async function loadDeepDive(
   const cfg = getSupabaseConfig();
   if (cfg) {
     try {
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `${cfg.url}/rest/v1/meridian_deep_dives?select=id,title,section,standfirst,key_facts,sections,sources,editorial_note,synthesis_mode,search_queries_used,generated_at&id=eq.${encodeURIComponent(
           id
         )}&limit=1`,
         {
           headers: buildSupabaseHeaders(cfg.key),
-          signal: AbortSignal.timeout(5000),
-          cache: 'no-store',
         }
       );
       if (res.ok) {
@@ -383,15 +545,20 @@ export async function saveDeepDive(article: DeepDiveArticle): Promise<void> {
   const cfg = getSupabaseConfig();
   if (cfg && cfg.writeSecret) {
     try {
-      await fetch(`${cfg.url}/rest/v1/rpc/save_meridian_deep_dive`, {
-        method: 'POST',
-        headers: buildSupabaseHeaders(cfg.key, true),
-        body: JSON.stringify({
-          p_secret: cfg.writeSecret,
-          p_article: article,
-        }),
-        signal: AbortSignal.timeout(8000),
-      });
+      const res = await fetchWithRetry(
+        `${cfg.url}/rest/v1/rpc/save_meridian_deep_dive`,
+        {
+          method: 'POST',
+          headers: buildSupabaseHeaders(cfg.key, true),
+          body: JSON.stringify({
+            p_secret: cfg.writeSecret,
+            p_article: article,
+          }),
+        }
+      );
+      if (!res.ok) {
+        console.error(`Supabase saveDeepDive returned HTTP ${res.status}`);
+      }
     } catch (err) {
       console.error('Supabase saveDeepDive warning:', err);
     }

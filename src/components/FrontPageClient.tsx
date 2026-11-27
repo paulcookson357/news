@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SECTION_LABELS } from '@/lib/sources';
 import type {
   Edition,
+  EditionArchiveItem,
   NewsSection,
   StoryCategory,
   StorySummary,
@@ -15,6 +16,7 @@ import { StoryCard } from './StoryCard';
 
 interface FrontPageClientProps {
   initialEdition: Edition;
+  initialArchive?: EditionArchiveItem[];
 }
 
 const EDITION_STORAGE_KEY = 'meridian_edition_v2';
@@ -113,24 +115,102 @@ function SectionFolioGrid({ items }: { items: StorySummary[] }) {
   return null;
 }
 
-export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
+export function FrontPageClient({
+  initialEdition,
+  initialArchive = [],
+}: FrontPageClientProps) {
   const [edition, setEdition] = useState<Edition>(initialEdition);
+  const [archive, setArchive] = useState<EditionArchiveItem[]>(initialArchive);
   const [activeSection, setActiveSection] = useState<NewsSection>('front');
   const [searchQuery, setSearchQuery] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isLoadingEdition, setIsLoadingEdition] = useState(false);
   const [updateStats, setUpdateStats] = useState<UpdateStats | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
+  const latestArchiveId = archive[0]?.id;
+  const isViewingArchive =
+    Boolean(latestArchiveId) &&
+    Boolean(edition.id) &&
+    edition.id !== latestArchiveId;
+
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        EDITION_STORAGE_KEY,
-        JSON.stringify(edition)
-      );
+      if (!isViewingArchive) {
+        window.localStorage.setItem(
+          EDITION_STORAGE_KEY,
+          JSON.stringify(edition)
+        );
+      }
     } catch {
       // Ignore storage errors
     }
-  }, [edition]);
+  }, [edition, isViewingArchive]);
+
+  const handleSelectEdition = async (targetEditionId: string) => {
+    setIsLoadingEdition(true);
+    setUpdateError(null);
+    setUpdateStats(null);
+    try {
+      const res = await fetch(
+        `/api/news/edition?id=${encodeURIComponent(targetEditionId)}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) {
+        throw new Error('Unable to load the requested edition.');
+      }
+      const data = (await res.json()) as {
+        edition: Edition;
+        archive?: EditionArchiveItem[];
+      };
+      setEdition(data.edition);
+      if (Array.isArray(data.archive)) {
+        setArchive(data.archive);
+      }
+      const nextLatest = data.archive?.[0]?.id ?? latestArchiveId;
+      const isLatest = !nextLatest || data.edition.id === nextLatest;
+      window.history.replaceState(
+        null,
+        '',
+        isLatest
+          ? '/'
+          : `/?edition=${encodeURIComponent(data.edition.id ?? targetEditionId)}`
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error ? err.message : 'Unable to load archive edition.'
+      );
+    } finally {
+      setIsLoadingEdition(false);
+    }
+  };
+
+  const handleReturnToLatest = async () => {
+    if (latestArchiveId) {
+      await handleSelectEdition(latestArchiveId);
+      return;
+    }
+    setIsLoadingEdition(true);
+    setUpdateError(null);
+    try {
+      const res = await fetch('/api/news/edition', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Unable to return to the latest edition.');
+      const data = (await res.json()) as {
+        edition: Edition;
+        archive?: EditionArchiveItem[];
+      };
+      setEdition(data.edition);
+      if (Array.isArray(data.archive)) setArchive(data.archive);
+      window.history.replaceState(null, '', '/');
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error ? err.message : 'Unable to load latest edition.'
+      );
+    } finally {
+      setIsLoadingEdition(false);
+    }
+  };
 
   const handleUpdateNews = async () => {
     setIsUpdating(true);
@@ -151,9 +231,14 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
       const data = (await res.json()) as {
         edition: Edition;
         stats: UpdateStats;
+        archive?: EditionArchiveItem[];
       };
       setEdition(data.edition);
+      if (Array.isArray(data.archive)) {
+        setArchive(data.archive);
+      }
       setUpdateStats(data.stats);
+      window.history.replaceState(null, '', '/');
       try {
         window.localStorage.setItem(
           EDITION_STORAGE_KEY,
@@ -256,10 +341,18 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F4EE]">
       <Masthead
+        editionId={edition.id}
         editionDate={edition.editionDate}
+        editionDay={edition.editionDay}
+        editionSlot={edition.editionSlot}
         updatedAt={edition.updatedAt}
         sourcesSucceeded={edition.sourcesSucceeded}
         sourcesChecked={edition.sourcesChecked}
+        archive={archive}
+        isViewingArchive={isViewingArchive}
+        isLoadingEdition={isLoadingEdition}
+        onSelectEdition={handleSelectEdition}
+        onReturnToLatest={handleReturnToLatest}
         activeSection={activeSection}
         onSelectSection={setActiveSection}
         searchQuery={searchQuery}
@@ -271,6 +364,27 @@ export function FrontPageClient({ initialEdition }: FrontPageClientProps) {
       />
 
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5">
+        {isViewingArchive && (
+          <div className="mb-4 px-3 py-2 border border-[#D4CCC0] bg-[#EFEAE0]/70 font-ui text-xs flex flex-wrap items-center justify-between gap-2 text-[#141413]">
+            <span>
+              Viewing archived edition:{' '}
+              <strong className="font-semibold">
+                {edition.editionDate}
+                {edition.editionSlot
+                  ? ` · ${edition.editionSlot.charAt(0).toUpperCase()}${edition.editionSlot.slice(1)} Edition`
+                  : ''}
+              </strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleReturnToLatest()}
+              disabled={isLoadingEdition}
+              className="cursor-pointer font-semibold uppercase tracking-[0.1em] text-[11px] text-[#8B1E24] hover:underline disabled:opacity-60"
+            >
+              Return to Latest Edition →
+            </button>
+          </div>
+        )}
         {filteredStories.length === 0 ? (
           <div className="border border-[#D4CCC0] bg-[#EFEAE0]/50 p-8 text-center my-8">
             <h2 className="font-display text-2xl font-bold text-[#141413]">
