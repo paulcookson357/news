@@ -38,34 +38,56 @@ function chunkIntoThree<T>(items: T[]): T[][] {
 
 function SectionFolioGrid({ items }: { items: StorySummary[] }) {
   if (items.length >= 5) {
+    const extraRow = items.length >= 8 ? items.slice(5, 8) : [];
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-[#D4CCC0]">
-        <div className="lg:col-span-5 lg:pr-6 pb-5 lg:pb-0 border-b lg:border-b-0 border-[#D4CCC0] flex">
-          <StoryCard story={items[0]} variant="featured" showImage />
+      <>
+        <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-[#D4CCC0]">
+          <div className="lg:col-span-5 lg:pr-6 pb-5 lg:pb-0 border-b lg:border-b-0 border-[#D4CCC0] flex">
+            <StoryCard story={items[0]} variant="featured" showImage />
+          </div>
+          <div className="lg:col-span-7 lg:pl-6 pt-5 lg:pt-0 grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#D4CCC0]">
+            <div className="sm:pr-5 flex flex-col divide-y divide-[#D4CCC0]">
+              {items.slice(1, 3).map((story) => (
+                <div
+                  key={story.id}
+                  className="flex flex-1 py-4 first:pt-0 last:pb-0"
+                >
+                  <StoryCard story={story} variant="standard" />
+                </div>
+              ))}
+            </div>
+            <div className="sm:pl-5 pt-4 sm:pt-0 border-t sm:border-t-0 border-[#D4CCC0] flex flex-col divide-y divide-[#D4CCC0]">
+              {items.slice(3, 5).map((story) => (
+                <div
+                  key={story.id}
+                  className="flex flex-1 py-4 first:pt-0 last:pb-0"
+                >
+                  <StoryCard story={story} variant="standard" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="lg:col-span-7 lg:pl-6 pt-5 lg:pt-0 grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#D4CCC0]">
-          <div className="sm:pr-5 flex flex-col divide-y divide-[#D4CCC0]">
-            {items.slice(1, 3).map((story) => (
+
+        {extraRow.length === 3 && (
+          <div className="mt-5 pt-5 border-t border-[#D4CCC0] grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#D4CCC0]">
+            {extraRow.map((story, colIdx) => (
               <div
                 key={story.id}
-                className="flex flex-1 py-4 first:pt-0 last:pb-0"
+                className={`flex py-4 first:pt-0 last:pb-0 md:py-0 ${
+                  colIdx === 0
+                    ? 'md:pr-6'
+                    : colIdx === 1
+                      ? 'md:px-6'
+                      : 'md:pl-6'
+                }`}
               >
                 <StoryCard story={story} variant="standard" />
               </div>
             ))}
           </div>
-          <div className="sm:pl-5 pt-4 sm:pt-0 border-t sm:border-t-0 border-[#D4CCC0] flex flex-col divide-y divide-[#D4CCC0]">
-            {items.slice(3, 5).map((story) => (
-              <div
-                key={story.id}
-                className="flex flex-1 py-4 first:pt-0 last:pb-0"
-              >
-                <StoryCard story={story} variant="standard" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        )}
+      </>
     );
   }
 
@@ -324,9 +346,10 @@ export function FrontPageClient({
     };
 
     for (const cat of SECTION_ORDER) {
+      const folioLimit = cat === 'uk' || cat === 'business' ? 8 : 5;
       folios[cat] = filteredStories
         .filter((s) => s.section === cat && !used.has(s.id))
-        .slice(0, 5);
+        .slice(0, folioLimit);
     }
 
     return {

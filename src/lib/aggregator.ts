@@ -352,7 +352,7 @@ async function fetchSingleFeed(feed: FeedConfig): Promise<RawArticle[]> {
   const now = Date.now();
   const articles: RawArticle[] = [];
 
-  for (const entry of entries.slice(0, 22)) {
+  for (const entry of entries.slice(0, 28)) {
     const title = cleanHeadline(entry.title);
     if (!title || title.length < 18) continue;
     if (!isFactualNewsUrl(entry.link, title)) continue;
@@ -562,11 +562,19 @@ function curateBalancedEdition(allStories: StorySummary[]): StorySummary[] {
     'environment',
   ];
   const targetPerCategory: Record<StoryCategory, number> = {
-    uk: 12,
+    uk: 19,
     world: 16,
-    business: 9,
+    business: 19,
     tech: 9,
     environment: 8,
+  };
+
+  const maxPerOutletByCategory: Record<StoryCategory, number> = {
+    uk: 7,
+    world: 4,
+    business: 4,
+    tech: 4,
+    environment: 4,
   };
 
   const selected: StorySummary[] = [];
@@ -579,7 +587,7 @@ function curateBalancedEdition(allStories: StorySummary[]): StorySummary[] {
 
     const catPicked: StorySummary[] = [];
     const outletCounts: Record<string, number> = {};
-    const maxPerOutlet = targetPerCategory[cat] >= 12 ? 4 : 3;
+    const maxPerOutlet = maxPerOutletByCategory[cat];
 
     // First pass: ensure publisher diversity within each section
     for (const story of pool) {
